@@ -4,15 +4,15 @@
 
 ```
 apk add \
-llvm22-dev \ 
+llvm22-dev \
 llvm22-static \
 llvm22-gtest \
 lld22-dev \
-libxml2-dev \ 
+libxml2-dev \
 curl-dev \
 clang \
 cmake \
-samurai \ 
+samurai \
 musl-dev
 ```
 
