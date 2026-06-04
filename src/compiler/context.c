@@ -46,6 +46,10 @@ static bool filename_to_module_in_buffer(const char *path)
 		if (path[i] == '/') last_slash = i;
 		if (path[i] == '.') last_dot = i;
 	}
+	// No extension dot in the filename itself (e.g. an extensionless
+	// single-file compile, or dots only in directory components): use the
+	// end of the path as the name boundary so the basename becomes the module.
+	if (last_dot <= last_slash) last_dot = len;
 	int name_len = last_dot - last_slash - 1;
 	if (name_len < 1) return false;
 	scratch_buffer_clear();
