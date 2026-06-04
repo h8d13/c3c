@@ -741,6 +741,21 @@ void compiler_compile(void)
 			output_exe = file_append_path(compiler.build.output_dir, output_exe);
 		}
 		;
+		// Never clobber one of our own input sources with the build output
+		// (happens with extension-less inputs: output name == input name).
+		// Append ".out" instead of failing, so the common case just works.
+		RECHECK_OUTPUT:
+		FOREACH(const char *, source, compiler.context.sources)
+		{
+			if (file_is_same(output_exe, source))
+			{
+				const char *safe = str_cat(output_exe, ".out");
+				OUTF("Note: output would overwrite source '%s'; writing to '%s' instead (use -o to override).\n",
+					 source, safe);
+				output_exe = safe;
+				goto RECHECK_OUTPUT;
+			}
+		}
 		file_create_folders(output_exe);
 		bool system_linker_available = link_libc() && compiler.platform.os != OS_TYPE_WIN32;
 		if (system_linker_available)
