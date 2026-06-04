@@ -855,11 +855,10 @@ const char **target_expand_source_names(const char *base_dir, const char** dirs,
 		}
 		if (!file_has_suffix_in_list(name, name_len, suffix_list, suffix_count))
 		{
-			// No extension at all (dotless basename) and a real file => treat as .c3 source.
-			// Keeps typo-protection: a missing/dir/wrong-suffix name still errors below.
-			const char *base = strrchr(name, '/');
-			base = base ? base + 1 : name;
-			if (file_exists(name) && !file_is_dir(name) && !strchr(base, '.'))
+			// Glob expansion (* / **) still filters by suffix in file_add_wildcard_files,
+			// so this can never sweep junk into a build. A non-existent name or a directory
+			// still falls through to INVALID_NAME below (dir -> recursive glob, else error).
+			if (file_exists(name) && !file_is_dir(name))
 			{
 				vec_add(files, name);
 				continue;
