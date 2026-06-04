@@ -843,7 +843,19 @@ const char **target_expand_source_names(const char *base_dir, const char** dirs,
 			}
 			goto INVALID_NAME;
 		}
-		if (!file_has_suffix_in_list(name, name_len, suffix_list, suffix_count)) goto INVALID_NAME;
+		if (!file_has_suffix_in_list(name, name_len, suffix_list, suffix_count))
+		{
+			// No extension at all (dotless basename) and a real file => treat as .c3 source.
+			// Keeps typo-protection: a missing/dir/wrong-suffix name still errors below.
+			const char *base = strrchr(name, '/');
+			base = base ? base + 1 : name;
+			if (file_exists(name) && !file_is_dir(name) && !strchr(base, '.'))
+			{
+				vec_add(files, name);
+				continue;
+			}
+			goto INVALID_NAME;
+		}
 		vec_add(files, name);
 		continue;
 		INVALID_NAME:
