@@ -14,7 +14,7 @@ CompilationUnit *unit_create(File *file)
 }
 
 
-static inline bool create_module_or_check_name(CompilationUnit *unit, Path *module_name)
+static inline bool create_module_or_check_name(CompilationUnit *unit, Path *module_name, bool generated)
 {
 	Module *module = unit->module;
 	if (!module) module = unit->module = compiler_find_or_create_module(module_name);
@@ -25,6 +25,18 @@ static inline bool create_module_or_check_name(CompilationUnit *unit, Path *modu
 		                      "Module name here '%s' did not match actual module '%s'.",
 		                      module_name->module,
 		                      module->name->module);
+	}
+	// No explicit 'module' declaration, and the filename-derived name already
+	// names a populated module: this file (the later one in CLI/source order)
+	// silently merges into it. Rarely intended for an extension-less/odd-named
+	// file, so warn.
+	if (generated && vec_size(module->units) > 0)
+	{
+		sema_warning_at(module_name->loc,
+		                "The file '%s' has no 'module' declaration, so its module name was derived "
+		                "from the filename as '%s', which already exists. This file is silently "
+		                "merged into that module. Add an explicit 'module %s;' to confirm, or rename the file.",
+		                unit->file->full_path, module_name->module, module_name->module);
 	}
 	vec_add(module->units, unit);
 	return true;
@@ -98,14 +110,14 @@ bool context_set_module_from_filename(ParseContext *context)
 	path->loc = make_loc(context->span);
 	path->module = module_name;
 	path->len = scratch_buffer.len;
-	return create_module_or_check_name(context->unit, path);
+	return create_module_or_check_name(context->unit, path, true);
 }
 
 bool context_set_module(ParseContext *context, Path *path)
 {
 
 	if (!check_module_name(path)) return false;
-	return create_module_or_check_name(context->unit, path);
+	return create_module_or_check_name(context->unit, path, false);
 }
 
 bool context_is_macro(SemaContext *context)
