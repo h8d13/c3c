@@ -30,7 +30,9 @@
 - Prevent infinite spin on `io::read_fully`, `File.load_buffer`, `File.load` and `File.save`.
 - `io::write_all` now retries on incomplete writes.
 - `GrowableBitSet.max_bit_set` added.
-
+- Added `UnboundedChannel`.
+- `BufferedChannel` and `UnbufferedChannel` gets non-blocking push/pop.
+ 
 ### Fixes
 - `@volatile_store` on arrays were sometimes incorrectly lowered.
 - NPOT vectors as associated variables were incorrectly lowered on load. #3228
@@ -126,6 +128,11 @@
 - `io::write_tiny_bytearray` and `io::write_short_bytearray` could have incomplete writes.
 - Splatting a partially raw array into a macro would miscompile. #3302
 - Getting the tag for an enum parameter caused a crash. #3307
+- Json marshalling of floats would lose precision.
+- Crash when initializing a bitstruct from an untyped list.
+- Shifting a vector by a non-numeric type would cause a crash rather than a compiler error.
+- Recursive macros were not detected when going by way of a lambda.
+- Compile time concatenation with an empty slice was lacking checks, causing a compiler crash.
 
 ## 0.8.0 Change list
 
