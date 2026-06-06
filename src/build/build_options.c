@@ -717,6 +717,14 @@ static void parse_command(BuildOptions *options)
 		options->command = COMMAND_DOCGEN;
 		return;
 	}
+	// If the first argument is not a command but an existing file, treat it as a
+	// script to compile and run. This enables shebang use: #!/usr/bin/env c3c
+	if (file_exists(current_arg) && !file_is_dir(current_arg))
+	{
+		options->command = COMMAND_COMPILE_RUN;
+		append_file(options);
+		return;
+	}
 	FAIL_WITH_ERR("Cannot process the unknown command \"%s\".", current_arg);
 }
 

@@ -1446,6 +1446,12 @@ void lexer_init(Lexer *lexer)
 	lexer->file_begin = lexer->file->contents;
 	// Set current to beginning.
 	lexer->current = lexer->file_begin;
+	// Skip a leading shebang line (e.g. "#!/usr/bin/env c3c") so scripts can be
+	// run directly. Stop at the newline; the normal scan consumes it and bumps the row.
+	if (lexer->current[0] == '#' && lexer->current[1] == '!')
+	{
+		while (lexer->current[0] && lexer->current[0] != '\n') lexer->current++;
+	}
 	// Line start is current.
 	lexer->line_start = lexer->current;
 	// Row number starts at 1
