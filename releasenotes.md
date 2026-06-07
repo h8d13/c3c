@@ -133,6 +133,11 @@
 - Shifting a vector by a non-numeric type would cause a crash rather than a compiler error.
 - Recursive macros were not detected when going by way of a lambda.
 - Compile time concatenation with an empty slice was lacking checks, causing a compiler crash.
+- Fix zip slip vulnerability.
+- Fixed issues with `Object.to_value`.
+- `DString.len` was incorrectly marked `@dynamic`.
+- Qoi decoder wasn't correctly signaling all invalid data.
+- Casting a constant string to a float vector was buggy, causing a compiler crash.
 
 ## 0.8.0 Change list
 
