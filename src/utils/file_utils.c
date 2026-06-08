@@ -858,7 +858,8 @@ const char **target_expand_source_names(const char *base_dir, const char** dirs,
 			// Glob expansion (* / **) still filters by suffix in file_add_wildcard_files,
 			// so this can never sweep junk into a build. A non-existent name or a directory
 			// still falls through to INVALID_NAME below (dir -> recursive glob, else error).
-			if (file_exists(name) && !file_is_dir(name))
+			struct stat st;
+			if (!stat(name, &st) && S_ISREG(st.st_mode))
 			{
 				vec_add(files, name);
 				continue;
