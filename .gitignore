@@ -57,6 +57,7 @@ Module.symvers
 Mkfile.old
 dkms.conf
 /build/
+/build-dbg/
 .idea/
 /resources/grammar.tab.c
 /resources/grammar.vcg
