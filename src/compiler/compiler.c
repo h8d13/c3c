@@ -13,6 +13,7 @@
 #endif
 #include "git_hash.h"
 #include <errno.h>
+#include <sys/stat.h>
 
 #define MAX_OUTPUT_FILES 1000000
 #define MAX_MODULES 100000
@@ -744,11 +745,18 @@ void compiler_compile(void)
 		// Never clobber one of our own input sources with the build output
 		// (happens with extension-less inputs: output name == input name).
 		// Append ".out" instead of failing, so the common case just works.
-		RECHECK_OUTPUT:
-		FOREACH(const char *, source, compiler.context.sources)
+		// Stat the output once per name (it's invariant across the scan); a
+		// non-existent output can't collide, so the loop is skipped on fresh builds.
+		struct stat out_st;
+		RECHECK_OUTPUT:;
+		bool out_is_file = !stat(output_exe, &out_st) && S_ISREG(out_st.st_mode) && out_st.st_ino != 0;
+		if (out_is_file)
 		{
-			if (file_is_same(output_exe, source))
+			FOREACH(const char *, source, compiler.context.sources)
 			{
+				struct stat src_st;
+				if (stat(source, &src_st) || !S_ISREG(src_st.st_mode)) continue;
+				if (src_st.st_dev != out_st.st_dev || src_st.st_ino != out_st.st_ino) continue;
 				const char *safe = str_cat(output_exe, ".out");
 				OUTF("Note: output would overwrite source '%s'; writing to '%s' instead (use -o to override).\n",
 					 source, safe);
