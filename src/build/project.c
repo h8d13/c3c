@@ -687,9 +687,8 @@ BuildTarget *project_select_target(const char *filename, Project *project, const
 
 JSONObject *project_json_load(const char **filename_ref)
 {
-	// Locate the project.json
-	file_find_top_dir();
-	const char *filename = *filename_ref = file_exists(PROJECT_JSON5) ? PROJECT_JSON5 : PROJECT_JSON;
+	// Locate the project.json; file_find_top_dir returns the file it matched.
+	const char *filename = *filename_ref = file_find_top_dir();
 
 	size_t size;
 	char *read = file_read_all(filename, &size);

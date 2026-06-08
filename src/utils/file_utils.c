@@ -511,13 +511,19 @@ void file_get_dir_and_filename_from_full(const char *full_path, char **filename,
 	}
 }
 
-void file_find_top_dir()
+const char *file_find_top_dir()
 {
 	while (1)
 	{
 		struct stat info;
-		const char *filename = file_exists(PROJECT_JSON5) ? PROJECT_JSON5 : PROJECT_JSON;
+		// Try project.json5, fall back to project.json; one stat each, no pre-check.
+		const char *filename = PROJECT_JSON5;
 		int err = stat(filename, &info);
+		if (err && errno == ENOENT)
+		{
+			filename = PROJECT_JSON;
+			err = stat(filename, &info);
+		}
 
 		// Error and the it's not a "missing file"?
 		if (err && errno != ENOENT)
@@ -526,7 +532,7 @@ void file_find_top_dir()
 		}
 
 		// Everything worked and it's a regular file? We're done!
-		if (!err && S_ISREG(info.st_mode)) return; // NOLINT(hicpp-signed-bitwise)
+		if (!err && S_ISREG(info.st_mode)) return filename; // NOLINT(hicpp-signed-bitwise)
 
 		// Otherwise just continue upwards.
 		// Note that symbolically linked files are ignored.
