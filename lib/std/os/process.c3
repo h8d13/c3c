@@ -45,7 +45,8 @@ constdef SpawnOptions
 }
 
 
-alias RawFd = env::WIN32 ? Win32_HANDLE : CInt;
+alias RawFd @if(env::WIN32)  = Win32_HANDLE;
+alias RawFd @if(!env::WIN32) = CInt;
 
 enum ProcessStdioAction
 {
