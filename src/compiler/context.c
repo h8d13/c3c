@@ -307,11 +307,24 @@ WEAK_MODULE:
 
 }
 
-
 void unit_register_global_decl(CompilationUnit *unit, Decl *decl)
 {
 	ASSERT_SPAN(decl, !decl->is_template);
 	ASSERT_SPAN(decl, !decl->unit || decl->is_templated);
+	if (decl->is_feat_cond)
+	{
+		switch (sema_remove_due_to_conditionals(decl->attributes))
+		{
+			case BOOL_TRUE:
+				decl->decl_kind = DECL_ERASED;
+				return;
+			case BOOL_ERR:
+				decl->decl_kind = DECL_POISONED;
+				return;
+			case BOOL_FALSE:
+				break;
+		}
+	}
 	decl->unit = unit;
 	switch (decl->decl_kind)
 	{
@@ -321,13 +334,9 @@ void unit_register_global_decl(CompilationUnit *unit, Decl *decl)
 			break;
 		case DECL_MACRO:
 			ASSERT(decl->name);
-			if (decl->func_decl.type_parent)
+			TypeInfo *parent = decl_find_target_if_method(decl);
+			if (parent)
 			{
-				if (type_infoptr(decl->func_decl.type_parent)->kind == TYPE_INFO_GENERIC)
-				{
-					vec_add(unit->generic_methods_to_register, decl);
-					return;
-				}
 				vec_add(unit->methods_to_register, decl);
 				return;
 			}
@@ -338,11 +347,6 @@ void unit_register_global_decl(CompilationUnit *unit, Decl *decl)
 			ASSERT(decl->name);
 			if (decl->func_decl.type_parent)
 			{
-				if (type_infoptr(decl->func_decl.type_parent)->kind == TYPE_INFO_GENERIC)
-				{
-					vec_add(unit->generic_methods_to_register, decl);
-					return;
-				}
 				vec_add(unit->methods_to_register, decl);
 				return;
 			}

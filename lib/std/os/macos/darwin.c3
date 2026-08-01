@@ -1,4 +1,4 @@
-module std::os::darwin @if(env::DARWIN);
+module std::os::darwin @feat(DARWIN);
 import std::collections::list, std::os;
 
 const CTL_UNSPEC	= 0; /* unused */
@@ -122,7 +122,7 @@ fn Backtrace? backtrace_load_element(Allocator allocator, String execpath, void*
 		        "-fullPath" })!;
 		@stack_mem(2048; Allocator mem)
         {
-			String[] parts = s.split(mem, " ", 5);
+			String[] parts = s.trim().split(mem, " ", 5);
 			if (parts.len == 4)
 			{
 				String[] path_parts = parts[3].split(mem, ":");

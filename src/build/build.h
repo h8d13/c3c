@@ -18,7 +18,6 @@
 #define DEFAULT_SWITCH_JUMP_MAX_SIZE (0x3FFF)
 #define DEFAULT_PATH "."
 
-
 typedef enum
 {
 	COMMAND_MISSING = 0,
@@ -259,6 +258,7 @@ typedef struct BuildOptions_
 	bool lsp_mode;
 	bool no_entry;
 	bool no_obj;
+	bool keep_object_files;
 	bool no_headers;
 	bool read_stdin;
 	bool print_output;
@@ -272,6 +272,9 @@ typedef struct BuildOptions_
 	const char *msvc_version_override;
 	const char *msvc_sdk_version_override;
 	const char *fetch_sdk_target;
+	const char *macos_sdk_version_override;
+	bool macos_list_sdks, macos_fetch_sdk_list;
+	const char **fetch_sdk_archs;
 	int verbosity_level;
 	const char *panicfn;
 	const char *benchfn;
@@ -416,6 +419,7 @@ typedef struct
 	bool emit_llvm;
 	bool emit_asm;
 	bool emit_object_files;
+	bool keep_object_files;
 	bool benchmarking;
 	bool testing;
 	bool silent;
@@ -601,6 +605,7 @@ extern const char *arch_os_target[ARCH_OS_TARGET_LAST + 1];
 extern LinuxLibc default_libc;
 
 void fetch_winsdk(BuildOptions *options);
+void fetch_macsdk(BuildOptions *options);
 void fetch_sdk(BuildOptions *options);
 char *fetch_android_ndk(BuildOptions *options);
 BuildOptions parse_arguments(int argc, const char *argv[]);

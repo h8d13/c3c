@@ -1,5 +1,49 @@
 # C3C Release Notes
 
+## 0.8.3 Change list
+
+### Changes / improvements
+- Windows aarch64 is now supported.
+- Tracking allocator can now accept cross-thread allocations.
+- Filter test backtraces #3368
+- Improved GDB compatibility for macros.
+- Fail when "emcc" is unavailable instead of falling back to the built-in wasm linker.
+- Support fetching MacSDK for easy cross compilation.
+- Add `@feat` attribute, deprecate `@if` on non-generic top level declarations. 
+- Add `$feat` compile time function. `$feature` is deprecated and replaced by `$feat`. 
+ 
+### Stdlib changes
+- LinkedList and Deque added a `prepend` method.
+- Added `FixedList.is_full()` method
+- `Rect.contains_point` is now exclusive on the maximum edge.
+- Add `Bounds` - a rectangular region stored as a `min` and `max` value, with all operations being inclusive along the boundary edge.
+- Experimental regex support.
+- Improved RFC 3986 compatibility.
+- JSON unmarshaling support, `json::unmarshal` and family.
+- Object unmarshaling support, `object::unmarshal` and family.
+- `json::temp_load` deprecated in favour of `json::tload`.
+- `Object::is_map` now returns true for empty objects.
+
+### Fixes
+- Generic functions and values incorrectly would not require a prefix. #3374
+- Arena allocator would error in safe mode when freeing the last memory and the arena was full. #3378
+- LinkedList `push_front_all` was appending in the wrong order.
+- `BitSet.len` would yield the size of the underlying type, not the length.
+- RFC3339 formatting would yield incorrect value for microseconds.
+- `--obj` will always retain the object files. #3380
+- ThreadGroup with function returning `void` was broken.
+- Timed `tcp::connect` always failed with `io::GENERAL_ERROR` instead of the real result.
+- Compile time struct with zeroed union member access causes compiler error #3382.
+- Generic methods checked before the generic type is fully registered.
+- Math function `_erff` invoked C `erf` function instead of `erff` function #3391
+- Defining local constants inside a macro causes it to fail to @const fold. #3397
+- AES CTR would lose sync on data not multiples of 16.
+- In some cases, on macros rethrowing optional values codegen could fail.
+- Json accepted incorrectly accepted `\v` as whitespace.
+- JSONC parsing on unterminated comments would loop indefinitely.
+- ZII array constdef would cause an assert. #3411
+- Calling a constant void macro inside a macro stops it from being constant. #3410
+
 ## 0.8.2 Change list
 
 ### Changes / improvements
@@ -9,11 +53,16 @@
 - Add `bitoffset` and `bitsize` reflection properties to bitstruct members. #3219
 - Add `is_anonymous` and `is_nested` to struct/union/bitstruct types and to members. #3223
 - Improve error message on trying to cast char array to String. #3343
+- Add `Foo::is_generic(...)`, `Foo::generic_qname` and `Foo::generic_args`. #2909 #3329
+- Add `own`, `init` and `drop` parameter annotations.
+- `constdef` can now be generic.
+- Libraries can now expose reusable target configurations via a `templates` map in their manifest, which projects reference from a target using `template: "library/template"`. Properties from the template are loaded first and can be overridden by target-local settings.
 
 ### Stdlib changes
 - `Atomic.compare_exchange` added.
 - Added `array::contains_slice` and `array::index_of_slice`.
 - `String.index_of` and `rindex_of` will now accept finding empty strings.
+- Add log::register_dynamic_category, for libraries that wish to define their own categories dynamically.
 
 ### Fixes
 - `$stringify` would sometimes include parens.
@@ -23,6 +72,12 @@
 - Compiler asserts on concatenating a struct to an untypedlist #3326.
 - `untypedlist` was not detected as invalid in enum associated value type or as a pointer #3342.
 - Regression using non-posix libc.
+- Crash with an optional struct recursively defined with a function type. #3358
+- Denormal results were not handle correctly by `String.to_double()`.
+- A float literal with an uppercase 'F' suffix would be a `double` instead of a `float`.
+- Json serialization would not correctly handle unicode and `\v`. #3353
+- Semantic checking was incorrect in the case of `&a - &b` where one or both are optional and the result isn't assigned.
+- Regression on MacOS, breaking stack trace.
 
 ## 0.8.1 Change list
 

@@ -40,6 +40,7 @@ bool decl_is_deprecated(Decl *decl)
 	return decl->resolved_attributes && decl->attrs_resolved && decl->attrs_resolved->deprecated;
 }
 
+
 // Check if local or parameter $foo/$Foo
 bool decl_is_ct_var(Decl *decl)
 {
@@ -356,7 +357,6 @@ bool decl_inherits_module_generic(Decl *decl)
 		case DECL_GENERIC_INSTANCE:
 		case DECL_IMPORT:
 		case DECL_LABEL:
-		case DECL_CONSTDEF:
 		case DECL_CONTRACT:
 		case DECL_CT_EXPAND:
 			return false;
@@ -364,6 +364,7 @@ bool decl_inherits_module_generic(Decl *decl)
 		case DECL_BITSTRUCT:
 		case DECL_DECLARRAY:
 		case DECL_ALIAS:
+		case DECL_CONSTDEF:
 		case DECL_TYPEDEF:
 		case DECL_ENUM:
 		case DECL_FNTYPE:
@@ -413,6 +414,29 @@ bool ast_is_compile_time(Ast *ast)
 	{
 		case AST_NOP_STMT:
 			return true;
+		case AST_DECLARE_STMT:
+			switch (ast->declare_stmt->var.kind)
+			{
+				case VARDECL_GLOBAL:
+				case VARDECL_PARAM:
+				case VARDECL_MEMBER:
+				case VARDECL_BITMEMBER:
+				case VARDECL_PARAM_EXPR:
+				case VARDECL_UNWRAPPED:
+				case VARDECL_ERASE:
+				case VARDECL_REWRAPPED:
+				case VARDECL_PARAM_CT:
+				case VARDECL_PARAM_CT_TYPE:
+					UNREACHABLE
+				case VARDECL_LOCAL:
+					return false;
+				case VARDECL_CONST:
+					return !ast->declare_stmt->var.is_addr;
+				case VARDECL_LOCAL_CT:
+				case VARDECL_LOCAL_CT_TYPE:
+					return true;
+			}
+			UNREACHABLE
 		case AST_RETURN_STMT:
 		case AST_BLOCK_EXIT_STMT:
 			if (!ast->return_stmt.expr) return true;
@@ -509,6 +533,7 @@ bool decl_needs_prefix(Decl *decl)
 	}
 }
 
+
 // Find a particular enum by name.
 Decl *decl_find_enum_constant(Decl *decl, const char *name)
 {
@@ -600,7 +625,7 @@ void scratch_buffer_set_extern_decl_name(Decl *decl, bool clear)
 	}
 	if (decl->decl_kind == DECL_FUNC && decl->func_decl.type_parent)
 	{
-		Type *parent = type_infoptr(decl->func_decl.type_parent)->type->canonical;
+		Type *parent = decl_find_method_target(decl)->type->canonical;
 		if (type_is_user_defined(parent))
 		{
 			scratch_buffer_set_extern_decl_name(parent->decl, false);

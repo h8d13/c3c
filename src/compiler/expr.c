@@ -213,7 +213,6 @@ RETRY:
 		case EXPR_DECL:
 		case EXPR_CALL:
 		case EXPR_CATCH:
-		case EXPR_MACRO_BODY_EXPANSION:
 		case EXPR_TRY:
 		case EXPR_TRY_UNWRAP_CHAIN:
 		case EXPR_POST_UNARY:
@@ -232,6 +231,23 @@ RETRY:
 		case EXPR_SLICE_LEN:
 		case EXPR_TWO:
 			return false;
+		case EXPR_MACRO_BODY_EXPANSION:
+		{
+			FOREACH_IDX(i, Decl *, d, expr->body_expansion_expr.declarations)
+			{
+				switch (d->var.kind)
+				{
+					case VARDECL_PARAM_CT:
+					case VARDECL_PARAM_CT_TYPE:
+					case VARDECL_PARAM_EXPR:
+						break;
+					default:
+						return false;
+				}
+			}
+			if (!expr->body_expansion_expr.first_stmt) return true;
+			return ast_is_compile_time(astptr(expr->body_expansion_expr.first_stmt));
+		}
 		case UNRESOLVED_EXPRS:
 			UNREACHABLE
 		case EXPR_VECTOR_FROM_ARRAY:
@@ -573,7 +589,8 @@ void expr_rewrite_to_const_zero(Expr *expr, Type *type)
 			expr->resolve_status = RESOLVE_DONE;
 			break;
 		case TYPE_CONSTDEF:
-			expr_rewrite_const_int(expr, type, 0);
+			expr_rewrite_to_const_zero(expr, type_flatten(type));
+			cast_no_check(expr, type, false);
 			return;
 		case TYPE_ENUM:
 			expr->const_expr.const_kind = CONST_ENUM;

@@ -40,13 +40,14 @@ typedef uint32_t FileId;
 #define INITIAL_GENERIC_SYMBOL_MAP 0x1000
 #define MAX_INCLUDE_DIRECTIVES 2048
 #define MAX_PARAMS 255
+#define MAX_INTERFACES 127
 #define MAX_VAARGS 512
 #define MAX_BITSTRUCT 0x1000
 #define MAX_MEMBERS ((StructIndex)1) << 15
 #define MAX_ALIGNMENT ((ArrayIndex)(((uint64_t)2) << 28))
 #define MAX_GENERIC_DEPTH 32
 #define MAX_PRIORITY 0xFFFF
-#define MAX_TYPE_SIZE (2U << 30)
+#define MAX_TYPE_SIZE (ByteSize)(2U << 30)
 #define MAX_GLOBAL_DECL_STACK (65536)
 #define MAX_MODULE_NAME 31
 #define MAX_MODULE_PATH 63
@@ -321,6 +322,7 @@ typedef struct
 struct Type_
 {
 	TypeKind type_kind;
+	bool is_live;
 	CanonicalType *canonical;
 	const char *name;
 	Type **type_cache;
@@ -440,6 +442,8 @@ typedef struct
 			DeclId padded_decl_id;
 			StructIndex union_rep;
 			AlignSize padding : 16;
+			bool is_packed : 1;
+			bool is_compact : 1;
 		};
 		struct
 		{
@@ -453,8 +457,6 @@ typedef struct
 	};
 } StructDecl;
 
-
-
 typedef struct VarDecl_
 {
 	TypeInfoId type_info;
@@ -466,6 +468,9 @@ typedef struct VarDecl_
 	bool not_null : 1;
 	bool out_param : 1;
 	bool in_param : 1;
+	bool own_param : 1;
+	bool drop_param : 1;
+	bool init_param : 1;
 	bool is_written : 1;
 	bool is_addr : 1;
 	bool self_addr : 1;
@@ -614,7 +619,7 @@ typedef struct
 typedef struct
 {
 	const char **parameters;
-	unsigned id;
+	int id;
 	Expr **requires;
 	Decl **instances;
 	Decl *owner;
@@ -717,7 +722,6 @@ typedef struct Decl_
 	ResolveStatus resolve_status : 3;
 	Visibility visibility : 3;
 	bool has_tag : 1;
-	bool is_packed : 1;
 	bool is_extern : 1;
 	bool is_substruct : 1;
 	bool has_variable_array : 1;
@@ -737,10 +741,10 @@ typedef struct Decl_
 	bool is_live : 1;
 	bool no_strip : 1;
 	bool is_cond : 1;
+	bool is_feat_cond : 1;
 	bool is_if : 1;
 	bool is_body_checked : 1;
 	bool attr_nopadding : 1;
-	bool attr_compact : 1;
 	bool resolved_attributes : 1;
 	bool allow_deprecated : 1;
 	bool attr_constinit : 1;
@@ -1761,6 +1765,7 @@ struct CompilationUnit_
 	Visibility default_visibility;
 	bool default_is_weak;
 	Attr *if_attr;
+	Attr **feat_attributes;
 	Decl *default_generic_section;
 	Decl **generic_decls;
 	Decl **weak_symbols_skipped;
@@ -1778,7 +1783,6 @@ struct CompilationUnit_
 	Decl **vars;
 	Decl **macros;
 	Decl **methods_to_register;
-	Decl **generic_methods_to_register;
 	Decl **methods;
 	Decl **macro_methods;
 	Decl **global_decls;
@@ -1995,6 +1999,7 @@ typedef struct
 	Module *path_found;
 	bool suppress_error;
 	bool is_parameterized;
+	bool is_generic_parent;
 } NameResolve;
 
 typedef struct
@@ -2026,6 +2031,7 @@ typedef struct
 	Ansi ansi;
 	HTable modules;
 	Module *core_module;
+	int generic_id_counter;
 	CompilationUnit *core_unit;
 	Module **module_list;
 	Type **type;
@@ -2041,6 +2047,7 @@ typedef struct
 	HTable features;
 	Module std_module;
 	MethodTable method_extensions;
+	Decl **unregistered_method_specializations;
 	Type **types_with_failed_methods;
 	Decl **method_extension_list;
 	DeclTable symbols;
@@ -2104,7 +2111,6 @@ extern const char *kw_std__io;
 extern const char *kw_tags;
 extern const char *kw_typekind;
 extern const char *kw_FILE_NOT_FOUND;
-extern const char *kw_IoError;
 
 extern const char *kw_at_align;
 extern const char *kw_at_deprecated;
@@ -2122,11 +2128,15 @@ extern const char *kw_bitsize;
 extern const char *kw_cname;
 extern const char *kw_compiler_rt;
 extern const char *kw_description;
+extern const char *kw_drop;
+extern const char *kw_generic_args;
+extern const char *kw_generic_qname;
 extern const char *kw_get;
 extern const char *kw_get_tag;
 extern const char *kw_has_tag;
 extern const char *kw_in;
 extern const char *kw_inout;
+extern const char *kw_init;
 extern const char *kw_is_anonymous;
 extern const char *kw_is_const;
 extern const char *kw_is_nested;
@@ -2143,6 +2153,7 @@ extern const char *kw_name;
 extern const char *kw_offset;
 extern const char *kw_ordinal;
 extern const char *kw_out;
+extern const char *kw_own;
 extern const char *kw_ptr;
 extern const char *kw_qname;
 extern const char *kw_return;
@@ -2436,11 +2447,15 @@ bool decl_inherits_module_generic(Decl *decl);
 void decl_append_links_to_global_during_codegen(Decl *decl);
 Decl *decl_template_get_generic(Decl *decl);
 
+INLINE ResolvedAttrData *decl_get_resolved_attributes(Decl *decl);
+INLINE ResolvedAttrData *decl_create_resolved_attributes(Decl *decl);
 INLINE bool decl_ok(Decl *decl);
 INLINE bool decl_poison(Decl *decl);
 INLINE bool decl_is_struct_type(Decl *decl);
 INLINE bool decl_is_user_defined_type(Decl *decl);
 INLINE Decl *decl_flatten(Decl *decl);
+INLINE TypeInfo *decl_find_method_target(Decl *decl);
+INLINE TypeInfo *decl_find_target_if_method(Decl *decl);
 static inline Decl *decl_raw(Decl *decl);
 static inline DeclKind decl_from_token(TokenType type);
 static inline bool decl_is_var_local(Decl *decl);
@@ -2568,6 +2583,8 @@ void sema_decl_stack_restore(Decl **state);
 void sema_decl_stack_push(Decl *decl);
 Decl *sema_find_generic_instance(SemaContext *context, Module *module, Decl *generic, Decl *instance, const char *name);
 
+BoolErr sema_remove_due_to_conditionals(Attr **attrs);
+BoolErr sema_remove_due_to_conditional(Attr *attr);
 bool sema_error_failed_cast(SemaContext *context, Expr *expr, Type *from, Type *to);
 bool sema_add_local(SemaContext *context, Decl *decl);
 void sema_unwrap_var(SemaContext *context, Decl *decl);
@@ -2621,6 +2638,7 @@ Decl *sema_find_label_symbol_anywhere(SemaContext *context, const char *symbol);
 Decl *sema_find_local(SemaContext *context, const char *symbol);
 Decl *sema_resolve_symbol(SemaContext *context, const char *symbol, Path *path, SourceLocId loc);
 Decl *sema_resolve_parameterized_symbol(SemaContext *context, const char *symbol, Path *path, SourceLocId loc);
+Decl *sema_resolve_generic_symbol(SemaContext *context, const char *symbol, Path *path, SourceLocId loc);
 Decl *sema_resolve_maybe_parameterized_symbol(SemaContext *context, const char *symbol, Path *path, SourceLocId loc);
 BoolErr sema_symbol_is_defined_in_scope(SemaContext *c, const char *symbol);
 
@@ -2695,9 +2713,10 @@ bool arch_is_wasm(ArchType type);
 
 const char *macos_sysroot(void);
 MacSDK *macos_sysroot_sdk_information(const char *sdk_path);
+const char *macos_cross_compile_library(void);
 WindowsSDK *windows_get_sdk(void);
 // This string may be in the scratch buffer
-const char *windows_cross_compile_library(void);
+const char *windows_cross_compile_library(const char *arch);
 
 void c_abi_func_create(Signature *sig, FunctionPrototype *proto, Expr **vaargs);
 
@@ -3404,7 +3423,7 @@ INLINE bool type_is_user_defined(Type *type)
 {
 	static const bool user_defined_types[TYPE_LAST + 1] = {
 		[TYPE_ENUM]       = true,
-		[TYPE_CONSTDEF] = true,
+		[TYPE_CONSTDEF]   = true,
 		[TYPE_STRUCT]     = true,
 		[TYPE_FUNC_RAW]   = true,
 		[TYPE_UNION]      = true,
@@ -3794,6 +3813,16 @@ INLINE Decl *decl_flatten(Decl *decl)
 		return decl->define_decl.alias;
 	}
 	return decl;
+}
+
+INLINE TypeInfo *decl_find_method_target(Decl *decl)
+{
+	return type_infoptr(decl->func_decl.type_parent);
+}
+
+INLINE TypeInfo *decl_find_target_if_method(Decl *decl)
+{
+	return type_infoptrzero(decl->func_decl.type_parent);
 }
 
 static inline DeclKind decl_from_token(TokenType type)
@@ -4435,6 +4464,7 @@ INLINE void expr_rewrite_const_integer(Expr *expr, Type *type, Int128 i)
 		.i =  i,
 		.type = type_flatten_to_int(type)->type_kind
 	};
+	ASSERT_SPAN(expr, type_kind_is_any_integer(expr->const_expr.ixx.type));
 	expr->const_expr.is_character = false;
 	expr->const_expr.const_kind = CONST_INTEGER;
 }
@@ -4445,6 +4475,7 @@ INLINE void expr_rewrite_const_int(Expr *expr, Type *type, uint64_t v)
 	expr->type = type;
 	expr->resolve_status = RESOLVE_DONE;
 	TypeKind kind = type_flatten(type)->type_kind;
+	ASSERT_SPAN(expr, type_kind_is_any_integer(kind));
 	expr->const_expr.ixx.i.high = 0;
 	if (type_kind_is_signed(kind))
 	{
@@ -4783,6 +4814,16 @@ INLINE bool expr_is_valid_index(Expr *expr)
 	return int_fits(expr->const_expr.ixx, TYPE_I64);
 }
 
+INLINE ResolvedAttrData *decl_get_resolved_attributes(Decl *decl)
+{
+	return decl->resolved_attributes ? decl->attrs_resolved : NULL;
+}
+
+INLINE ResolvedAttrData *decl_create_resolved_attributes(Decl *decl)
+{
+	ASSERT_SPAN(decl, decl->resolved_attributes);
+	return decl->attrs_resolved = CALLOCS(ResolvedAttrData);
+}
 
 const char *default_c_compiler(void);
 

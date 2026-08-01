@@ -401,46 +401,71 @@ static bool parse_param_path(ParseContext *c, DesignatorElement ***path)
 	}
 }
 
+/*
+ * Parse a lambda "fn void() ..."
+ */
 static Expr *parse_lambda(ParseContext *c, Expr *left, SourceLoc *lhs_span UNUSED)
 {
 	ASSERT(!left && "Unexpected left hand side");
+
+	// Create the expr
 	Expr *expr = EXPR_NEW_TOKEN(EXPR_LAMBDA);
+
+	// Step past the "fn"
 	advance_and_verify(c, TOKEN_FN);
+
+	// Start generating a function
 	Decl *func = decl_calloc();
 	func->loc = make_loc(c->prev_span);
 	func->decl_kind = DECL_FUNC;
 	func->visibility = VISIBLE_LOCAL;
 	func->func_decl.generated_lambda = NULL;
 	TypeInfo *return_type = NULL;
+
+	// Two possibilities: "fn ()" and "fn int()"
+	// Handle the typed version:
 	if (!tok_is(c, TOKEN_LPAREN))
 	{
 		ASSIGN_TYPE_OR_RET(return_type, parse_optional_type(c), poisoned_expr);
 	}
+
+	// Start parsing the argument list
 	CONSUME_OR_RET(TOKEN_LPAREN, poisoned_expr);
 	Decl **decls = NULL;
 	Variadic variadic = VARIADIC_NONE;
 	int vararg_index = -1;
+
+	// Parse parameters
 	if (!parse_parameters(c, &decls, &variadic, &vararg_index, PARAM_PARSE_LAMBDA)) return poisoned_expr;
 	CONSUME_OR_RET(TOKEN_RPAREN, poisoned_expr);
+
+	// Construct the signature
 	Signature *sig = &func->func_decl.signature;
 	sig->vararg_index = vararg_index < 0 ? vec_size(decls) : vararg_index;
 	sig->params = decls;
 	sig->rtype = return_type ? type_infoid(return_type) : 0;
 	sig->variadic = variadic;
-	if (!parse_attributes(c, &func->attributes, NULL, NULL, NULL, "on lambda declarations", NULL)) return poisoned_expr;
+
+	// Parse any attributes
+	if (!parse_attributes(c, &func->attributes, NULL, NULL, NULL, "on lambda declarations", NULL, NULL)) return poisoned_expr;
 	RANGE_EXTEND_PREV(func);
+
+	// We either have short or regular bodies
 	if (tok_is(c, TOKEN_IMPLIES))
 	{
-		ASSIGN_ASTID_OR_RET(func->func_decl.body,
-							parse_short_body(c, func->func_decl.signature.rtype, false), poisoned_expr);
+		// =>
+		ASSIGN_ASTID_OR_RET(func->func_decl.body, parse_short_body(c, func, true), poisoned_expr);
 	}
 	else if (tok_is(c, TOKEN_LBRACE))
 	{
+		// { }
 		ASSIGN_ASTID_OR_RET(func->func_decl.body, parse_compound_stmt(c), poisoned_expr);
 	}
 	else
 	{
+		// Something else
 		PRINT_ERROR_HERE("Expected the beginning of a block or a short statement.");
+		return poisoned_expr;
 	}
 	expr->lambda_expr = func;
 	RANGE_EXTEND_PREV(expr);
@@ -1314,6 +1339,20 @@ static Expr *parse_ct_feature(ParseContext *c, Expr *left, SourceLoc *lhs_start 
 	ASSIGN_EXPR_OR_RET(expr->inner_expr, parse_expr(c), poisoned_expr);
 	CONSUME_OR_RET(TOKEN_RPAREN, poisoned_expr);
 	RANGE_EXTEND_PREV(expr);
+	if (compiler.build.warnings.deprecation == WARNING_ERROR) RETURN_PRINT_ERROR_AT(poisoned_expr, expr, "Top declaration '@if' is deprecated except for generic declarations, please use '@feat' instead.");
+	PRINT_DEPRECATED_AT(expr->loc, "'$feature' is deprecated, please use '$feat' instead.");
+	return expr;
+}
+
+static Expr *parse_ct_feat(ParseContext *c, Expr *left, SourceLoc *lhs_start UNUSED)
+{
+	ASSERT(!left && "Unexpected left hand side");
+	Expr *expr = expr_new_loc(EXPR_CT_FEATURE, &c->span);
+	advance(c);
+	CONSUME_OR_RET(TOKEN_LPAREN, poisoned_expr);
+	ASSIGN_EXPR_OR_RET(expr->inner_expr, parse_expr(c), poisoned_expr);
+	CONSUME_OR_RET(TOKEN_RPAREN, poisoned_expr);
+	RANGE_EXTEND_PREV(expr);
 	return expr;
 }
 
@@ -1590,7 +1629,7 @@ EXIT:
 			PRINT_ERROR_AT(expr_int, "The negated integer size would exceed an int128.");
 			return poisoned_expr;
 		}
-		if (negated) ixx = i128_neg(ixx);
+		ixx = i128_neg(ixx);
 	}
 
 	expr_int->const_expr.const_kind = CONST_INTEGER;
@@ -1698,7 +1737,7 @@ static int base64_to_sextet(char c)
  * @param data start pointer
  * @param end end pointer
  */
-static void parse_base64(char *result_pointer, char *result_pointer_end, const char *data, const char *end)
+static void parse_base64(char *result_pointer, const char *result_pointer_end, const char *data, const char *end)
 {
 	char *data_current = result_pointer;
 	ASSERT(data_current);
@@ -2128,6 +2167,7 @@ ParseRule rules[TOKEN_EOF + 1] = {
 		[TOKEN_CT_EMBED] = { parse_ct_embed, NULL, PREC_NONE },
 		[TOKEN_CT_EVAL] = { parse_ct_eval, NULL, PREC_NONE },
 		[TOKEN_CT_FEATURE] = { parse_ct_feature, NULL, PREC_NONE },
+		[TOKEN_CT_FEAT] = { parse_ct_feat, NULL, PREC_NONE },
 		[TOKEN_CT_REFLECT] = { parse_ct_reflect, NULL, PREC_NONE },
 		[TOKEN_CT_STRINGIFY] = { parse_ct_stringify, NULL, PREC_NONE },
 		[TOKEN_CT_TERNARY] = { NULL, parse_ternary_expr, PREC_TERNARY },
