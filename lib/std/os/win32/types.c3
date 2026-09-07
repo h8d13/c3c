@@ -1,4 +1,4 @@
-module std::os::win32 @if(env::WIN32);
+module std::os::win32 @feat(WIN32);
 
 alias Win32_FARPROC = void*;
 alias Win32_BOOL = int;
