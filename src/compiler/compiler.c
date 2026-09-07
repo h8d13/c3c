@@ -176,7 +176,7 @@ const char *tilde_codegen(void *context)
 	error_exit("TB backend not available.");
 	UNREACHABLE
 }
-void **tilde_gen(Module** modules, unsigned module_count)
+void **tilde_gen(Module** modules, int module_count)
 {
 	error_exit("TB backend not available.");
 	UNREACHABLE
@@ -310,7 +310,7 @@ static int compile_cfiles(const char *cc, const char **files, const char *flags,
 {
 	if (!cc || !file_executable_in_path(cc))
 	{
-		cc = default_c_compiler();
+		cc = find_c_compiler();
 	}
 	int total = 0;
 	FOREACH(const char *, file, files)
@@ -493,7 +493,7 @@ void compiler_compile(void)
 	}
 	compiler_sema_time = bench_mark();
 	Module **modules = compiler.context.module_list;
-	unsigned module_count = vec_size(modules);
+	int module_count = vec_size(modules);
 	if (module_count > MAX_MODULES)
 	{
 		error_exit("Too many modules.");
@@ -564,6 +564,7 @@ void compiler_compile(void)
 			error_exit("Unfinished C backend!");
 		case BACKEND_LLVM:
 #if LLVM_AVAILABLE
+			llvm_setup();
 			gen_contexts = llvm_gen(modules, module_count);
 			task = &thread_compile_task_llvm;
 #else 
@@ -632,15 +633,15 @@ void compiler_compile(void)
 	}
 	free_arenas();
 
-	uint32_t output_file_count = vec_size(gen_contexts);
-	unsigned external_objfile_count = vec_size(compiler.build.object_files);
-	unsigned cfiles = vec_size(compiler.build.csources);
-	unsigned cfiles_library = 0;
+	int output_file_count = vec_size(gen_contexts);
+	int external_objfile_count = vec_size(compiler.build.object_files);
+	int cfiles = vec_size(compiler.build.csources);
+	int cfiles_library = 0;
 	FOREACH(LibraryTarget *, lib, compiler.build.ccompiling_libraries)
 	{
 		cfiles_library += vec_size(lib->csources);
 	}
-	unsigned total_output = output_file_count + cfiles + cfiles_library + external_objfile_count;
+	int total_output = output_file_count + cfiles + cfiles_library + external_objfile_count;
 
 	if (total_output > MAX_OUTPUT_FILES)
 	{
@@ -667,7 +668,7 @@ void compiler_compile(void)
 	{
 		int compiled = compile_cfiles(compiler.build.cc, compiler.build.csources,
 									  compiler.build.cflags, compiler.build.cinclude_dirs, &obj_files[output_file_count], "tmp_c_compile");
-		ASSERT(cfiles == compiled);
+		ASSERT((int)cfiles == compiled);
 		(void)compiled;
 	}
 	const char **obj_file_next = &obj_files[output_file_count + cfiles];
@@ -676,14 +677,14 @@ void compiler_compile(void)
 		obj_file_next += compile_cfiles(lib->cc ? lib->cc : compiler.build.cc, lib->csources,
 										lib->cflags, lib->cinclude_dirs, obj_file_next, lib->parent->provides);
 	}
-	for (unsigned i = 0; i < external_objfile_count; i++)
+	for (int i = 0; i < external_objfile_count; i++)
 	{
 		obj_file_next[0] = compiler.build.object_files[i];
 		obj_file_next++;
 	}
 
 	Task **tasks = NULL;
-	for (unsigned i = 0; i < output_file_count; i++)
+	for (int i = 0; i < output_file_count; i++)
 	{
 		compile_data[i] = (CompileData) { .context = gen_contexts[i] };
 		compile_data[i].task = (Task) { task, &compile_data[i] };
@@ -693,24 +694,17 @@ void compiler_compile(void)
 #if USE_PTHREAD
 	INFO_LOG("Will use %d thread(s).\n", compiler.build.build_threads);
 #endif
-	unsigned task_count = vec_size(tasks);
+	int task_count = (int)vec_size(tasks);
 	if (task_count > 0)
 	{
-		Task *task_last = VECLAST(tasks);
-		vec_pop(tasks);
-		task_last->task(task_last->arg);
-		task_count--;
-		if (task_count)
-		{
-			taskqueue_run((int)(compiler.build.build_threads > task_count ? task_count : compiler.build.build_threads), tasks);
-		}
+		taskqueue_run((int)(compiler.build.build_threads > task_count ? task_count : compiler.build.build_threads), tasks);
 	}
 	if (compiler.build.print_output)
 	{
 		puts("# output-files-begin");
 	}
 	int index = 0;
-	for (unsigned i = output_file_count; i > 0; i--)
+	for (int i = output_file_count; i > 0; i--)
 	{
 		const char *name = compile_data[i - 1].object_name;
 		if (!name) output_file_count--;
@@ -726,7 +720,7 @@ void compiler_compile(void)
 	}
 
 	output_file_count += cfiles + cfiles_library + external_objfile_count;
-	unsigned objfile_delete_count = output_file_count - external_objfile_count;
+	int objfile_delete_count = output_file_count - external_objfile_count;
 	free(compile_data);
 	compiler_codegen_time = bench_mark();
 
@@ -772,9 +766,9 @@ void compiler_compile(void)
 		bool system_linker_available = link_libc() && compiler.platform.os != OS_TYPE_WIN32;
 		if (system_linker_available)
 		{
-			const char *cc = compiler.build.cc ? compiler.build.cc : default_c_compiler();
+			const char *cc = find_c_compiler();
 			if (!file_executable_in_path(cc)) system_linker_available = false;
-			if (compiler.platform.os == OS_TYPE_EMSCRIPTEN && (!file_executable_in_path(cc) || !strstr(cc, "emcc")))
+			if (compiler.platform.os == OS_TYPE_EMSCRIPTEN && compiler.build.linker_type != LINKER_TYPE_BUILTIN && (!file_executable_in_path(cc) || !strstr(cc, "emcc")))
 			{
 				error_exit("\"emscripten\" target requires Emscripten to be installed on your system; \"%s\" was not found.", cc);
 			}
@@ -785,7 +779,7 @@ void compiler_compile(void)
 			case LINKER_TYPE_CC:
 				if (!system_linker_available)
 				{
-					const char *cc = compiler.build.cc ? compiler.build.cc : default_c_compiler();
+					const char *cc = find_c_compiler();
 					OUTF("C compiler '%s' not found or system linker is unsupported; using built-in linker instead.\n", cc);
 					compiler.build.linker_type = LINKER_TYPE_BUILTIN;
 					use_system_linker = false;
@@ -833,8 +827,8 @@ void compiler_compile(void)
 			scratch_buffer_clear();
 			if (compiler.platform.os == OS_TYPE_WIN32)
 			{
-				size_t len = strlen(name);
-				for (unsigned i = 0; i < len; i++)
+				int len = (int)strlen(name);
+				for (int i = 0; i < len; i++)
 				{
 					if (name[i] == '/')
 					{
@@ -989,7 +983,7 @@ void compile_file_list(BuildOptions *options)
 		}
 		OUTF("Running prepare target '%s'.\n", options->target_select);
 		execute_scripts();
-		OUTN("Completed.\n.");
+		OUTN("Completed.");
 		return;
 	}
 	if (options->command == COMMAND_CLEAN_RUN)
@@ -1086,7 +1080,7 @@ void vendor_fetch(BuildOptions *options)
 		}
 	}
 
-	unsigned count = 0;
+	int count = 0;
 	const char** fetched_libraries = NULL;
 	int total_libraries = (int)vec_size(options->libraries_to_fetch);
 	
@@ -1283,7 +1277,7 @@ void print_syntax(BuildOptions *options)
 
 }
 
-static int jump_buffer_size()
+static int jump_buffer_size(void)
 {
 	switch (compiler.build.arch_os_target)
 	{
@@ -1303,6 +1297,7 @@ static int jump_buffer_size()
 		case LINUX_RISCV64:
 			// Godbolt test
 			return 43;
+		case IOS_X64_SIM:
 		case MACOS_X64:
 			return 19; // Actually 18.5
 		case WINDOWS_X64: // 16 on x32
@@ -1328,6 +1323,7 @@ static int jump_buffer_size()
 			// Based on Godbolt
 			return 24;
 		case IOS_AARCH64:
+		case IOS_AARCH64_SIM:
 		case MACOS_AARCH64:
 			// Based on macOS headers
 			return 25;
@@ -1620,8 +1616,8 @@ INLINE void update_feature_flags(void)
 	if (safe_mode_enabled()) add_feat("SAFE_MODE");
 	if (compiler.build.debug_info == DEBUG_INFO_FULL) add_feat("DEBUG_SYMBOLS");
 	if (compiler.build.show_backtrace != SHOW_BACKTRACE_OFF) add_feat("BACKTRACE");
-	if (compiler.build.benchmarking) add_feat("BENCHMARKING");
-	if (compiler.build.testing) add_feat("TESTING");
+	if (compiler.build.build_benchmark) add_feat("BENCHMARKING");
+	if (compiler.build.build_test) add_feat("TESTING");
 	switch (compiler.platform.width_register)
 	{
 		case 8: add_feat("ARCH_8_BIT"); break;
@@ -1745,7 +1741,7 @@ void compile(void)
 {
 	symtab_init(compiler.build.symtab_size);
 	compiler.build.sources = target_expand_source_names(NULL, compiler.build.source_dirs, c3_suffix_list, &compiler.build.object_files, 3, true);
-	if (compiler.build.testing && compiler.build.test_source_dirs)
+	if (compiler.build.build_test && compiler.build.test_source_dirs)
 	{
 		const char **test_sources = target_expand_source_names(NULL, compiler.build.test_source_dirs, c3_suffix_list, &compiler.build.object_files, 3, true);
 		FOREACH(const char *, file, test_sources) vec_add(compiler.build.sources, file);
@@ -2041,8 +2037,9 @@ File *compile_and_invoke(const char *file, const char *args, const char *stdin_d
 	return source_file_text_load(file, out);
 }
 
-const char *default_c_compiler(void)
+const char *find_c_compiler(void)
 {
+	if (compiler.build.cc) return compiler.build.cc;
 	static const char *cc = NULL;
 	if (cc) return cc;
 	const char *cc_env = getenv("C3C_CC");

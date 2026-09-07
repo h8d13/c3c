@@ -1,7 +1,7 @@
 module abc <Type>;
 
-attrdef @Hello = @inline;
-faultdef ABC;
+attrmacro @Hello = @inline;
+excuse ABC;
 
 module bcd;
 import abc;

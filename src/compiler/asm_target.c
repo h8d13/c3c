@@ -173,7 +173,7 @@ static inline void reg_instr_clob(PlatformTarget *target, const char *name, Clob
 {
 	AsmInstruction *instr = insert_instruction_named(target, name);
 	instr->mask = mask;
-	unsigned param_count = 0;
+	int param_count = 0;
 	while (args && args[0] != 0)
 	{
 		ASSERT(param_count <= MAX_ASM_INSTRUCTION_PARAMS);
@@ -215,9 +215,9 @@ INLINE void reg_register(PlatformTarget *target, const char *name, AsmRegisterTy
 	}
 }
 
-INLINE void reg_register_list(PlatformTarget *target, const char **names, unsigned count, AsmRegisterType param, unsigned bitsize, unsigned first_clobber)
+INLINE void reg_register_list(PlatformTarget *target, const char **names, int count, AsmRegisterType param, int bitsize, int first_clobber)
 {
-	for (unsigned i = 0; i < count; i++) reg_register(target, names[i], param, bitsize, i + first_clobber);
+	for (int i = 0; i < count; i++) reg_register(target, names[i], param, bitsize, i + first_clobber);
 }
 
 AsmInstruction *asm_instr_by_name(const char *name)
@@ -421,7 +421,7 @@ static void init_asm_riscv(PlatformTarget *target)
 {
 	target->clobber_name_list = RISCVClobberNames;
 	target->extra_clobbers = NULL;
-	unsigned int bits = 0;
+	int bits = 0;
 	switch(target->arch) {
 		case ARCH_TYPE_RISCV64:
 			// math
@@ -874,8 +874,14 @@ static void init_asm_x86(PlatformTarget* target)
 	// RDSEED
 	reg_instr_clob(target, "rdseed", cc_flag_mask, "w:r16/r32/r64");
 
+	// LGDT, LIDT
+	reg_instr(target, "lgdt", "mem");
+	reg_instr(target, "lidt", "mem");
+
 	target->clobber_name_list = X86ClobberNames;
 	target->extra_clobbers = "~{flags},~{dirflag},~{fspr}";
+
+
 	if (target->arch == ARCH_TYPE_X86)
 	{
 		reg_register_list(target, x86_long_regs, 8, ASM_REG_INT, ARG_BITS_32, X86_RAX);
@@ -883,6 +889,7 @@ static void init_asm_x86(PlatformTarget* target)
 		reg_register_list(target, x86_low_byte_regs, 8, ASM_REG_INT, ARG_BITS_8, X86_RAX);
 		reg_register_list(target, x86_float_regs, 8, ASM_REG_FLOAT, ARG_BITS_80, X86_ST0);
 		reg_register_list(target, x86_xmm_regs, 8, ASM_REF_FVEC, ARG_BITS_128, X86_MM0);
+		reg_register_list(target, x86_control_regs, 4 , ASM_REG_INT, ARG_BITS_32, X86_CR0);
 	}
 	else
 	{
@@ -894,7 +901,9 @@ static void init_asm_x86(PlatformTarget* target)
 		reg_register_list(target, x86_xmm_regs, 16, ASM_REF_FVEC, ARG_BITS_128, X86_XMM0);
 		reg_register_list(target, x86_ymm_regs, 16, ASM_REF_FVEC, ARG_BITS_256, X86_XMM0);
 		reg_register_list(target, x86_zmm_regs, 16, ASM_REF_FVEC, ARG_BITS_512, X86_XMM0);
+		reg_register_list(target, x86_control_regs, 4, ASM_REG_INT, ARG_BITS_64, X86_CR0);
 	}
+
 }
 
 bool asm_is_supported(ArchType arch)
@@ -1058,7 +1067,7 @@ static void print_arch_asm(PlatformTarget *target)
 		if (scratch_buffer.len) scratch_buffer_delete(2);
 		printf("%-30s | ", scratch_buffer_to_string());
 		int len = 0;
-		for (unsigned j = 0; j < instruction->param_count; j++)
+		for (int j = 0; j < instruction->param_count; j++)
 		{
 			if (j != 0)
 			{

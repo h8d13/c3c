@@ -10,26 +10,45 @@ on:
       - 'resources/docs.html'
   pull_request:
     branches: [ master, dev ]
-    paths-ignore:
-      - '**.md'
-      - 'LICENSE'
-      - '.gitignore'
-      - 'resources/docs.html'
   workflow_dispatch:
 
 env:
   LLVM_RELEASE_VERSION: 22.x
-  LLVM_RELEASE_VERSION_LINUX_MUSL: 21
-  LLVM_RELEASE_VERSION_OPENBSD: 20
-  LLVM_RELEASE_VERSION_NETBSD: 19
+  LLVM_RELEASE_VERSION_LINUX_MUSL: 22
+  LLVM_RELEASE_VERSION_OPENBSD: 21
+  LLVM_RELEASE_VERSION_NETBSD: 21
   LLVM_DEV_VERSION: 22
   # CACHE_INVALIDATION_SEED: '%Y-%m-%d' # Daily
   CACHE_INVALIDATION_SEED: '%G-%V-1'   # Weekly
 
 jobs:
 
+  # Gate job: checks only the files changed in the LATEST push (not the whole
+  # PR diff). This prevents CI from re-running when only docs/notes are updated.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          token: ''
+          base: ${{ github.event.before }}
+          predicate-quantifier: 'some-with-excludes'
+          filters: |
+            src:
+              - '**'
+              - '!**.md'
+              - '!LICENSE'
+              - '!.gitignore'
+              - '!resources/docs.html'
+
   build-msvc:
     name: Windows (x64) MSVC
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
     timeout-minutes: 30
     defaults:
@@ -130,6 +149,8 @@ jobs:
 
   build-msvc-arm64:
     name: Windows (aarch64) MSVC
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-11-arm
     timeout-minutes: 30
     defaults:
@@ -229,6 +250,8 @@ jobs:
           
   build-msys2:
     name: Windows (${{ matrix.arch }}) ${{ matrix.sys }}
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -277,6 +300,8 @@ jobs:
 
   build-linux:
     name: Linux (x64) Ubuntu
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -369,9 +394,11 @@ jobs:
 
   build-linux-musl-static:
     name: Linux (x64) musl Static
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     container:
-      image: alpine:3.23
+      image: alpine:3.24
     steps:
       - name: Prepare Git
         run: |
@@ -436,9 +463,11 @@ jobs:
 
   build-linux-alpine:
     name: Linux (x64) Alpine Dynamic
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     container:
-      image: alpine:3.23
+      image: alpine:3.24
     steps:
       - name: Prepare Git
         run: |
@@ -518,6 +547,8 @@ jobs:
 
   build-mac:
     name: macOS (aarch64)
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -560,6 +591,8 @@ jobs:
 
   build-openbsd:
     name: OpenBSD (x64) ${{ matrix.version }}
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -633,6 +666,8 @@ jobs:
 
   build-netbsd:
     name: NetBSD (x64) ${{ matrix.version }}
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -726,11 +761,13 @@ jobs:
 
   build-with-docker:
     name: LLVM ${{ matrix.llvm_version }} Compatibility
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        llvm_version: [19, 20]
+        llvm_version: [20, 21]
     steps:
       - uses: actions/checkout@v7
 
@@ -788,7 +825,8 @@ jobs:
             bash -c "./scripts/tools/ci_tests.sh ./bin/c3c"
 
   build-linux-llvm23:
-    if: false
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     name: Linux (x64) LLVM 23
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -799,21 +837,20 @@ jobs:
 
       - name: Install LLVM 23 from apt.llvm.org
         run: |
-          sudo mkdir -p /etc/apt/keyrings
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/llvm.gpg
-          echo "deb [signed-by=/etc/apt/keyrings/llvm.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
+          sudo apt-get install -y wget lsb-release gnupg software-properties-common
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+
+          sudo ./llvm.sh 23 all
+
           sudo apt-get install -y \
-            llvm-23-dev \
-            clang-23 \
-            lld-23 \
             liblld-23-dev \
             libpolly-23-dev \
-            libclang-23-dev \
             zlib1g-dev \
             ninja-build \
             python3 \
-            libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev libxcursor-dev # for raylib6
+            libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev libxcursor-dev
 
       - name: CMake Build
         run: |
@@ -826,6 +863,8 @@ jobs:
 
   build-nix:
     name: Nix (${{ matrix.nixpkgs }})
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -848,6 +887,8 @@ jobs:
 
   build-android:
     name: Android (${{ matrix.architecture }})
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -968,7 +1009,40 @@ jobs:
         with:
           name: c3-android-${{matrix.architecture}}-Debug
           path: c3-android-${{matrix.architecture}}-Debug.tar.gz
-  
+
+  test-ios:
+    name: iOS (aarch64)
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      
+      - name: CMake Build (Host)
+        run: |
+          cmake -B build-debug -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DC3_FETCH_LLVM=ON
+          cmake --build build-debug
+
+      - name: Setup and Boot iOS Simulator
+        uses: futureware-tech/simulator-action@v5
+        with:
+          os: 'iOS'
+          os_version: ">=14.0"
+
+      - name: Run Unified Tests (iOS)
+        run: |
+          chmod +x ./scripts/tools/ci_tests.sh
+          ./scripts/tools/ci_tests.sh ./build-debug/c3c "ios"
+
+      - name: Compile and Inspect Device Binary
+        if: always()
+        run: |
+          ./build-debug/c3c compile resources/examples/hello_world_many.c3 -vv --target ios-aarch64 -o helloworld
+          echo "--- Binary Details ---"
+          file helloworld && echo "---" && otool -hv helloworld
+
   release:
     runs-on: ubuntu-slim
     needs: [build-msvc, build-msvc-arm64, build-linux, build-mac, build-linux-alpine, build-openbsd, build-netbsd, build-android, build-linux-musl-static]

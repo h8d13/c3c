@@ -94,6 +94,19 @@ static const char *riscv_abi[3] = {
 	[RISCV_ABI_DOUBLE] = "double",
 };
 
+static const char *stack_probe[3] = {
+	[STACK_PROBE_NONE] = "none",
+	[STACK_PROBE_CALL] = "call",
+	[STACK_PROBE_INLINE] = "inline",
+};
+
+static const char *stack_protector[4] = {
+	[STACK_PROTECTOR_NONE] = "none",
+	[STACK_PROTECTOR_BASIC] = "basic",
+	[STACK_PROTECTOR_STRONG] = "strong",
+	[STACK_PROTECTOR_ALL] = "all",
+};
+
 static const char *win64_simd_type[2] = {
 	[WIN64_SIMD_ARRAY] = "array",
 	[WIN64_SIMD_FULL] = "full",
@@ -177,7 +190,7 @@ static const char *sanitize_modes[4] = {
 
 JSONObject *project_json_load(const char **filename_ref);
 Project *project_load(const char **filename_ref);
-BuildTarget *project_select_target(const char *filename, Project *project, const char *optional_target);
+BuildTarget *project_select_target(const char *filename, Project *project, const char *optional_target, CompilerCommand compiler_command);
 JSONObject *read_library_manifest_for_path(const char *lib_path, const char **manifest_path_ref);
 
 const char *get_string(BuildParseContext context, JSONObject *table, const char *key, const char *default_value);

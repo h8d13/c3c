@@ -129,7 +129,6 @@ bool command_accepts_files(CompilerCommand command)
 		case COMMAND_CLEAN_RUN:
 		case COMMAND_CLEAN:
 		case COMMAND_DIST:
-		case COMMAND_BENCH:
 		case COMMAND_PRINT_SYNTAX:
 		case COMMAND_BENCHMARK:
 		case COMMAND_TEST:
@@ -165,7 +164,6 @@ bool command_passes_args(CompilerCommand command)
 		case COMMAND_BUILD:
 		case COMMAND_CLEAN:
 		case COMMAND_DIST:
-		case COMMAND_BENCH:
 		case COMMAND_PRINT_SYNTAX:
 		case COMMAND_VENDOR_FETCH:
 		case COMMAND_PROJECT:
@@ -298,6 +296,8 @@ static LinkLibc libc_from_arch_os(ArchOsTarget target)
 		case FREEBSD_X86:
 		case FREEBSD_X64:
 		case IOS_AARCH64:
+		case IOS_AARCH64_SIM:
+		case IOS_X64_SIM:
 		case LINUX_AARCH64:
 		case LINUX_RISCV32:
 		case LINUX_RISCV64:
@@ -361,10 +361,26 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 {
 	switch (options->command)
 	{
-		case COMMAND_COMPILE_BENCHMARK:
 		case COMMAND_BENCHMARK:
-			target->run_after_compile = !options->suppress_run;
+			switch (target->type)
+			{
+				case TARGET_TYPE_STATIC_LIB:
+				case TARGET_TYPE_DYNAMIC_LIB:
+				case TARGET_TYPE_OBJECT_FILES:
+				case TARGET_TYPE_EXECUTABLE:
+				case TARGET_TYPE_BENCHMARK:
+					break;
+				case TARGET_TYPE_TEST:
+					error_exit("The '%s' target is a test target and not compatible with the benchmark command.", target->name);
+				case TARGET_TYPE_PREPARE:
+					error_exit("The '%s' target is a prepare target and not compatible with the benchmark command.", target->name);
+			}
+BENCHMARK:
+		case COMMAND_COMPILE_BENCHMARK:
 			target->type = TARGET_TYPE_BENCHMARK;
+			options->command = COMMAND_BENCHMARK;
+			options->build_benchmark = true;
+			target->run_after_compile = !options->suppress_run;
 			if (options->benchmark_csv_report) vec_add(target->args, "--csv-report");
 			switch (options->ansi)
 			{
@@ -380,10 +396,27 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 					break;
 			}
 			break;
-		case COMMAND_COMPILE_TEST:
 		case COMMAND_TEST:
+			switch (target->type)
+			{
+				case TARGET_TYPE_STATIC_LIB:
+				case TARGET_TYPE_DYNAMIC_LIB:
+				case TARGET_TYPE_OBJECT_FILES:
+				case TARGET_TYPE_EXECUTABLE:
+				case TARGET_TYPE_TEST:
+					target->type = TARGET_TYPE_TEST;
+					break;
+				case TARGET_TYPE_BENCHMARK:
+					error_exit("The '%s' target is a benchmark target and not compatible with the test command.", target->name);
+				case TARGET_TYPE_PREPARE:
+					error_exit("The '%s' target is a prepare target and not compatible with the test command.", target->name);
+			}
+		case COMMAND_COMPILE_TEST:
+TEST:
+			options->command = COMMAND_TEST;
 			target->run_after_compile = !options->suppress_run;
 			target->type = TARGET_TYPE_TEST;
+			options->build_test = true;
 			switch (options->ansi)
 			{
 				case ANSI_ON:
@@ -412,8 +445,26 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 			if (options->test_show_output) vec_add(target->args, "--test-show-output");
 			break;
 		case COMMAND_RUN:
-		case COMMAND_COMPILE_RUN:
 		case COMMAND_CLEAN_RUN:
+			switch (target->type)
+			{
+				case TARGET_TYPE_EXECUTABLE:
+					break;
+				case TARGET_TYPE_STATIC_LIB:
+				case TARGET_TYPE_DYNAMIC_LIB:
+					error_exit("'%s' is a library target and cannot be run.", target->name);
+				case TARGET_TYPE_OBJECT_FILES:
+					error_exit("'%s' is an object file target and cannot be run.", target->name);
+				case TARGET_TYPE_BENCHMARK:
+					goto BENCHMARK;
+				case TARGET_TYPE_TEST:
+					goto TEST;
+				case TARGET_TYPE_PREPARE:
+					options->command = COMMAND_BUILD;
+					goto BUILD;
+			}
+			FALLTHROUGH;
+		case COMMAND_COMPILE_RUN:
 			target->run_after_compile = true;
 			target->delete_after_run = options->run_once;
 			target->args = options->args;
@@ -428,7 +479,31 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 		case COMMAND_STATIC_LIB:
 			target->type = TARGET_TYPE_STATIC_LIB;
 			break;
-		default:
+		case COMMAND_BUILD:
+		case COMMAND_DIST:
+BUILD:
+			if (target->type == TARGET_TYPE_BENCHMARK)
+			{
+				options->suppress_run = true;
+				goto BENCHMARK;
+			}
+			if (target->type == TARGET_TYPE_TEST)
+			{
+				options->suppress_run = true;
+				goto TEST;
+			}
+			FALLTHROUGH;
+		case COMMAND_MISSING:
+		case COMMAND_COMPILE:
+		case COMMAND_INIT:
+		case COMMAND_INIT_LIB:
+		case COMMAND_CLEAN:
+		case COMMAND_VENDOR_FETCH:
+		case COMMAND_UNIT_TEST:
+		case COMMAND_PRINT_SYNTAX:
+		case COMMAND_PROJECT:
+		case COMMAND_FETCH_SDK:
+		case COMMAND_DOCGEN:
 			target->run_after_compile = false;
 			break;
 	}
@@ -501,6 +576,7 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 	set_if_updated(target->emit_stdlib, options->emit_stdlib);
 	set_if_updated(target->win.crt_linking, options->win.crt_linking);
 	set_if_updated(target->win.subsystem, options->win.subsystem);
+	set_if_updated(target->feature.implicit_float, options->implicit_float);
 	set_if_updated(target->feature.fp_math, options->fp_math);
 	set_if_updated(target->feature.x86_vector_capability, options->x86_vector_capability);
 	set_if_updated(target->feature.x86_cpu_set, options->x86_cpu_set);
@@ -509,6 +585,8 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 	set_if_updated(target->feature.win_debug, options->win_debug);
 	set_if_updated(target->linuxpaths.libc, options->linux_libc);
 	set_if_updated(target->feature.pass_win64_simd_as_arrays, options->win_64_simd);
+	set_if_updated(target->stack_probe, options->stack_probe);
+	set_if_updated(target->stack_protector, options->stack_protector);
 
 	OVERRIDE_IF_SET(output_dir);
 	OVERRIDE_IF_SET(panicfn);
@@ -521,12 +599,16 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 	OVERRIDE_IF_SET(win.def);
 	OVERRIDE_IF_SET(no_entry);
 	OVERRIDE_IF_SET(echo_prefix);
+	OVERRIDE_IF_SET(stack_probe_size);
 
-	OVERRIDE_IF_SET(macos.sysroot);
 	OVERRIDE_IF_SET(win.sdk);
 	OVERRIDE_IF_SET(win.vs_dirs);
+	OVERRIDE_IF_SET(macos.sysroot);
 	OVERRIDE_IF_SET(macos.min_version);
 	OVERRIDE_IF_SET(macos.sdk_version);
+	OVERRIDE_IF_SET(ios.sysroot);
+	OVERRIDE_IF_SET(ios.min_version);
+	OVERRIDE_IF_SET(ios.sdk_version);
 	OVERRIDE_IF_SET(linuxpaths.crt);
 	OVERRIDE_IF_SET(linuxpaths.crtbegin);
 	OVERRIDE_IF_SET(android.ndk_path);
@@ -551,11 +633,15 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 	if (!target->max_macro_iterations) target->max_macro_iterations = DEFAULT_MAX_MACRO_ITERATIONS;
 	if (target->quiet && !options->verbosity_level) options->verbosity_level = -1;
 
+	if (target->stack_probe == STACK_PROBE_NOT_SET) target->stack_probe = STACK_PROBE_CALL;
+
 	switch (target->validation_level)
 	{
 		case VALIDATION_LENIENT:
 			update_warning_if_not_set(&target->warnings.builtin, WARNING_WARN);
 			update_warning_if_not_set(&target->warnings.dead_code, WARNING_SILENT);
+			update_warning_if_not_set(&target->warnings.unused_parameter, WARNING_SILENT);
+			update_warning_if_not_set(&target->warnings.unused_local, WARNING_SILENT);
 			update_warning_if_not_set(&target->warnings.recursive_contracts, WARNING_WARN);
 			update_warning_if_not_set(&target->warnings.deprecation, WARNING_SILENT);
 			update_warning_if_not_set(&target->warnings.method_visibility, WARNING_WARN);
@@ -565,6 +651,8 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 			target->validation_level = VALIDATION_STRICT;
 			FALLTHROUGH;
 		case VALIDATION_STRICT:
+			update_warning_if_not_set(&target->warnings.unused_parameter, WARNING_SILENT);
+			update_warning_if_not_set(&target->warnings.unused_local, WARNING_SILENT);
 			update_warning_if_not_set(&target->warnings.builtin, WARNING_WARN);
 			update_warning_if_not_set(&target->warnings.dead_code, WARNING_WARN);
 			update_warning_if_not_set(&target->warnings.deprecation, WARNING_WARN);
@@ -579,6 +667,8 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 			update_warning_if_not_set(&target->warnings.recursive_contracts, WARNING_ERROR);
 			update_warning_if_not_set(&target->warnings.method_visibility, WARNING_ERROR);
 			update_warning_if_not_set(&target->warnings.methods_not_resolved, WARNING_ERROR);
+			update_warning_if_not_set(&target->warnings.unused_parameter, WARNING_ERROR);
+			update_warning_if_not_set(&target->warnings.unused_local, WARNING_ERROR);
 			break;
 	}
 	update_warning(&target->warnings.builtin, options->warnings.builtin);
@@ -587,6 +677,8 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 	update_warning(&target->warnings.deprecation, options->warnings.deprecation);
 	update_warning(&target->warnings.method_visibility, options->warnings.method_visibility);
 	update_warning(&target->warnings.methods_not_resolved, options->warnings.methods_not_resolved);
+	update_warning(&target->warnings.unused_local, options->warnings.unused_local);
+	update_warning(&target->warnings.unused_parameter, options->warnings.unused_parameter);
 
 	if (options->keep_object_files)
 	{
@@ -596,15 +688,15 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 
 	target->print_linking = options->print_linking || options->verbosity_level > 1;
 
-	for (size_t i = 0; i < options->linker_arg_count; i++)
+	for (int i = 0; i < options->linker_arg_count; i++)
 	{
 		vec_add(target->link_args, options->linker_args[i]);
 	}
-	for (size_t i = 0; i < options->linker_lib_dir_count; i++)
+	for (int i = 0; i < options->linker_lib_dir_count; i++)
 	{
 		vec_add(target->linker_libdirs, options->linker_lib_dir[i]);
 	}
-	for (size_t i = 0; i < options->linker_lib_count; i++)
+	for (int i = 0; i < options->linker_lib_count; i++)
 	{
 		vec_add(target->linker_libs, options->linker_libs[i]);
 	}
@@ -641,10 +733,10 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 	if (target->linuxpaths.libc == LINUX_LIBC_NOT_SET) target->linuxpaths.libc = default_libc;
 
 	bool is_static = false;
-	for (size_t i = 0; i < options->linker_arg_count; i++)
+	for (int i = 0; i < options->linker_arg_count; i++)
 	{
 		const char *arg = options->linker_args[i];
-		if (strcmp(arg, "-static") == 0 || strcmp(arg, "--static") == 0 || strcmp(arg, "static") == 0)
+		if (str_eq(arg, "-static") || str_eq(arg, "--static") || str_eq(arg, "static"))
 		{
 			is_static = true;
 			break;
@@ -670,8 +762,8 @@ static void update_build_target_from_options(BuildTarget *target, BuildOptions *
 		WARNING("Statically linking against glibc produces binaries that still require glibc shared libraries at runtime for NSS/dns lookups. Consider targeting musl instead using `-linux-libc=musl --linker=builtin`.");
 	}
 
-	target->benchmarking = options->benchmarking;
-	target->testing = options->testing;
+	target->build_benchmark = options->build_benchmark;
+	target->build_test = options->build_test;
 	target->docgen = options->command == COMMAND_DOCGEN;
 	target->docgen_json_out = options->docgen_json_out;
 	target->docgen_append = options->docgen_append;
@@ -842,7 +934,7 @@ void init_build_target(BuildTarget *target, BuildOptions *options)
 	}
 
 
-	*target = *project_select_target(filename, project, options->target_select);
+	*target = *project_select_target(filename, project, options->target_select, options->command);
 
 	if (project_path) target->project_dir = str_dup(project_path);
 	update_build_target_from_options(target, options);

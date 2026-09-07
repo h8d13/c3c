@@ -145,7 +145,7 @@ Decl *sema_generate_parameterized_identifier(SemaContext *context, Decl *generic
 {
 	Module *module = alias->unit->module;
 	Decl *instance = NULL;
-	unsigned id = generic->generic_decl.id;
+	int id = generic->generic_decl.id;
 	FOREACH(Decl *, g, alias->unit->module->generic_sections)
 	{
 		if (g->generic_decl.id != id) continue;
@@ -266,6 +266,11 @@ FOUND:;
 		{
 			if (!decl_ok(decl)) continue;
 			if (decl->unit->module->stage < ANALYSIS_DECLS) continue;
+			if (decl->unit->module->stage <= ANALYSIS_DECLS_CHECK_GENERICS)
+			{
+				vec_add(compiler.context.unregistered_generic_decls, decl);
+				continue;
+			}
 			SemaContext context_gen;
 			sema_context_init(&context_gen, decl->unit);
 			DynamicScope empty = { .depth = 0 };
@@ -338,7 +343,10 @@ FOUND:;
 	}
 	else
 	{
-		if (!sema_analyse_decl(context, symbol)) return poisoned_decl;
+		if (unit->module->stage > ANALYSIS_DECLS_CHECK_GENERICS)
+		{
+			if (!sema_analyse_decl(context, symbol)) return poisoned_decl;
+		}
 	}
 	unit_register_external_symbol(context, symbol);
 	return symbol;
@@ -352,9 +360,9 @@ Decl *sema_analyse_parameterized_identifier(SemaContext *context, Path *decl_pat
 	if (!alias) return poisoned_decl;
 	ASSERT_AT(invocation_loc, alias->is_template && alias->generic_id);
 	Decl *generic = declptr(alias->generic_id);
-	unsigned parameter_count = vec_size(generic->generic_decl.parameters);
+	int parameter_count = vec_size(generic->generic_decl.parameters);
 	ASSERT(parameter_count > 0);
-	unsigned count = vec_size(params);
+	int count = vec_size(params);
 	if (parameter_count != count)
 	{
 		if (!count)
@@ -422,6 +430,11 @@ Decl *sema_analyse_parameterized_identifier(SemaContext *context, Path *decl_pat
 		}
 	}
 	sema_generate_parameter_suffix_to_scratch(params, true);
+	if (scratch_buffer.len > MAX_GENERIC_SUFFIX)
+	{
+		sema_error_at(context, invocation_loc, "The generic declaration is too deeply nested and is possibly recursive.");
+		return poisoned_decl;
+	}
 	const char *suffix = scratch_buffer_interned();
 	return sema_generate_parameterized_identifier(context, generic, alias, params, NULL, NULL, suffix, invocation_loc, loc);
 }

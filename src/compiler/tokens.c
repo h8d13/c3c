@@ -191,6 +191,8 @@ const char *token_type_to_string(TokenType type)
 			return "asm";
 		case TOKEN_ASSERT:
 			return "assert";
+		case TOKEN_ATTRMACRO:
+			return "attrmacro";
 		case TOKEN_ATTRDEF:
 			return "attrdef";
 		case TOKEN_BITSTRUCT:
@@ -205,6 +207,10 @@ const char *token_type_to_string(TokenType type)
 			return "const";
 		case TOKEN_CONSTDEF:
 			return "constdef";
+		case TOKEN_CENUM:
+			return "cenum";
+		case TOKEN_CONSTSET:
+			return "constset";
 		case TOKEN_CONTINUE:
 			return "continue";
 		case TOKEN_DEFAULT:
@@ -223,6 +229,8 @@ const char *token_type_to_string(TokenType type)
 			return "false";
 		case TOKEN_FAULTDEF:
 			return "faultdef";
+		case TOKEN_FAULTSET:
+			return "faultset";
 		case TOKEN_FOR:
 			return "for";
 		case TOKEN_FOREACH:
@@ -263,6 +271,8 @@ const char *token_type_to_string(TokenType type)
 			return "true";
 		case TOKEN_TRY:
 			return "try";
+		case TOKEN_DISTINCT:
+			return "distinct";
 		case TOKEN_TYPEDEF:
 			return "typedef";
 		case TOKEN_TYPEID:
