@@ -15,7 +15,7 @@ const char *project_default_keys[][2] = {
 		{"build-dir", "Build location, where intermediate files are placed by default, relative to project file."},
 		{"c-include-dirs", "Set the include directories for C sources."},
 		{"c-sources", "Set the C sources to be compiled."},
-		{"cc", "Set C compiler (defaults to 'cc')."},
+		{"cc", "Set C compiler."},
 		{"cflags", "C compiler flags."},
 		{"cpu", "CPU name, used for optimizations in the compiler backend."},
 		{"cpu-flags", "Set the cpu flags to add or remove with the format '+avx,-sse'."},
@@ -25,6 +25,10 @@ const char *project_default_keys[][2] = {
 		{"exec", "Scripts run for all targets."},
 		{"features", "Features enabled for all targets."},
 		{"fp-math", "Set math behaviour: `strict`, `relaxed` or `fast`."},
+		{"implicit-float", "Allow implicit use of floating point instructions. (default: true)"},
+		{"ios-min-version", "Set the minimum iOS version to compile for."},
+		{"ios-sdk", "Set the directory for the iOS SDK for cross compilation."},
+		{"ios-sdk-version", "Set the iOS SDK compiled for." },
 		{"langrev", "Version of the C3 language used."},
 		{"link-args", "Linker arguments for all targets."},
 		{"link-libc", "Link libc (default: true)."},
@@ -61,6 +65,8 @@ const char *project_default_keys[][2] = {
 		{"single-module", "Compile all modules together, enables more inlining."},
 		{"slp-vectorize", "Force enable/disable SLP auto-vectorization."},
 		{"soft-float", "Output soft-float functions."},
+		{"stack-probe", "Set the stack argument probing mode: none, call (default), inline."},
+		{"stack-protector", "Set the stack protection level: none, basic (default), strong, all."},
 		{"sources", "Paths to project sources for all targets."},
 		{"strip-unused", "Strip unused code and globals from the output. (default: true)"},
 		{"symtab", "Sets the preferred symtab size."},
@@ -77,7 +83,7 @@ const char *project_default_keys[][2] = {
 		{"wincrt", "Windows CRT linking: none, static-debug, static, dynamic-debug (default if debug info enabled), dynamic (default)."},
 		{"windef", "Windows def file, used as an alternative to dllexport when exporting a DLL."},
 		{"win-sdk", "Set the path to Windows system library files for cross compilation."},
-		{"win-subsystem", "Windows subsystem: CONSOLE (default), WINDOWS (default if @winmain present), NATIVE, POSIX, BOOT_APPLICATION, EFI_APPLICATION, EFI_BOOT_SERVICE_DRIVER, EFI_ROM or EFI_RUNTIME_DRIVER."},
+		{"win-subsystem", "Windows subsystem: console (default), windows (default if @winmain present), native, posix, boot, efi-app, efi-boot, efi-rom or efi-runtime."},
 		{"x86-stack-struct-return", "Return structs on the stack for x86."},
 		{"x86cpu", "Set general level of x64 cpu: baseline, ssse3, sse4, avx1, avx2-v1, avx2-v2 (Skylake/Zen1+), avx512 (Icelake/Zen4+), native."},
 		{"x86vec", "Set max type of vector use: none, mmx, sse, avx, avx512, native."},
@@ -97,7 +103,7 @@ const char* project_target_keys[][2] = {
 		{"c-include-dirs-override", "Additional C sources include directories for the target, overriding global settings."},
 		{"c-sources", "Additional C sources to be compiled for the target."},
 		{"c-sources-override", "C sources to be compiled, overriding global settings."},
-		{"cc", "Set C compiler (defaults to 'cc')."},
+		{"cc", "Set C compiler."},
 		{"cflags", "Additional C compiler flags for the target."},
 		{"cflags-override", "C compiler flags for the target, overriding global settings."},
 		{"cpu", "CPU name, used for optimizations in the compiler backend."},
@@ -113,6 +119,10 @@ const char* project_target_keys[][2] = {
 		{"extension", "Override the default file extension for the build output."},
 		{"features", "Features enabled for all targets."},
 		{"fp-math", "Set math behaviour: `strict`, `relaxed` or `fast`."},
+		{"implicit-float", "Allow implicit use of floating point instructions. (default: true)"},
+		{"ios-min-version", "Set the minimum iOS version to compile for."},
+		{"ios-sdk", "Set the directory for the iOS SDK for cross compilation."},
+		{"ios-sdk-version", "Set the iOS SDK compiled for." },
 		{"langrev", "Version of the C3 language used."},
 		{"link-args", "Additional linker arguments for the target."},
 		{"link-args-override", "Linker arguments for this target, overriding global settings."},
@@ -153,6 +163,8 @@ const char* project_target_keys[][2] = {
 		{"single-module", "Compile all modules together, enables more inlining."},
 		{"slp-vectorize", "Force enable/disable SLP auto-vectorization."},
 		{"soft-float", "Output soft-float functions."},
+		{"stack-probe", "Set the stack argument probing mode for this target: none, call (default), inline."},
+		{"stack-protector", "Set the stack protection level for this target: none, basic (default), strong, all."},
 		{"sources", "Additional paths to project sources for the target."},
 		{"sources-override", "Paths to project sources for this target, overriding global settings."},
 		{"strip-unused", "Strip unused code and globals from the output. (default: true)"},
@@ -171,7 +183,7 @@ const char* project_target_keys[][2] = {
 		{"wincrt", "Windows CRT linking: none, static-debug, static, dynamic-debug (default if debug info enabled), dynamic (default)."},
 		{"windef", "Windows def file, used as an alternative to dllexport when exporting a DLL."},
 		{"win-sdk", "Set the path to Windows system library files for cross compilation."},
-		{"win-subsystem", "Windows subsystem: CONSOLE (default), WINDOWS (default if @winmain present), NATIVE, POSIX, BOOT_APPLICATION, EFI_APPLICATION, EFI_BOOT_SERVICE_DRIVER, EFI_ROM or EFI_RUNTIME_DRIVER."},
+		{"win-subsystem", "Windows subsystem: console (default), windows (default if @winmain present), native, posix, boot, efi-app, efi-boot, efi-rom or efi-runtime."},
 		{"x86-stack-struct-return", "Return structs on the stack for x86."},
 		{"x86cpu", "Set general level of x64 cpu: baseline, ssse3, sse4, avx1, avx2-v1, avx2-v2 (Skylake/Zen1+), avx512 (Icelake/Zen4+), native."},
 		{"x86vec", "Set max type of vector use: none, mmx, sse, avx, avx512, native."},
@@ -496,11 +508,21 @@ static void load_into_build_target(BuildParseContext context, JSONObject *json, 
 	target->macos.sysroot = get_string(context, json, "macos-sdk", target->macos.sysroot);
 	if (!target->macos.sysroot) target->macos.sysroot = get_string(context, json, "macossdk", NULL);
 
+	// iossdk
+	target->ios.sysroot = get_string(context, json, "ios-sdk", target->ios.sysroot);
+	if (!target->ios.sysroot) target->ios.sysroot = get_string(context, json, "iossdk", NULL);
+
 	// macos-min-version
 	target->macos.min_version = get_string(context, json, "macos-min-version", target->macos.min_version);
 
+	// ios-min-version
+	target->ios.min_version = get_string(context, json, "ios-min-version", target->ios.min_version);
+
 	// macos-sdk-version
 	target->macos.sdk_version = get_string(context, json, "macos-sdk-version", target->macos.sdk_version);
+
+	// ios-sdk-version
+	target->ios.sdk_version = get_string(context, json, "ios-sdk-version", target->ios.sdk_version);
 
 	// Linux crt
 	target->linuxpaths.crt = get_string(context, json, "linux-crt", target->linuxpaths.crt);
@@ -520,6 +542,14 @@ static void load_into_build_target(BuildParseContext context, JSONObject *json, 
 	// linux-libc
 	LinuxLibc linux_libc = GET_SETTING(LinuxLibc, "linux-libc", linuxlibc, "`gnu`, `musl` or `host`.");
 	if (linux_libc > -1) target->linuxpaths.libc = linux_libc;
+
+	// stack-probe
+	StackProbe stack_probe_val = GET_SETTING(StackProbe, "stack-probe", stack_probe, "`none`, `call` or `inline`");
+	if (stack_probe_val != STACK_PROBE_NOT_SET) target->stack_probe = stack_probe_val;
+
+	// stack-protector
+	StackProtector stack_protector_val = GET_SETTING(StackProtector, "stack-protector", stack_protector, "`none`, `basic`, `strong` or `all`");
+	if (stack_protector_val != STACK_PROTECTOR_NOT_SET) target->stack_protector = stack_protector_val;
 
 	// version
 	target->version = get_string(context, json, "version", target->version);
@@ -584,6 +614,9 @@ static void load_into_build_target(BuildParseContext context, JSONObject *json, 
 	// Use the fact that they correspond to 0, 1, -1
 	target->feature.x86_struct_return = get_valid_bool(context, json, "x86-stack-struct-return",
 	                                                   target->feature.x86_struct_return);
+
+	// Implicit float
+	target->feature.implicit_float = (ImplicitFloat) get_valid_bool(context, json, "implicit-float", target->feature.implicit_float);
 
 	// Soft float
 	target->feature.soft_float = get_valid_bool(context, json, "soft-float", target->feature.soft_float);
@@ -663,7 +696,7 @@ static JSONObject* resolve_template(BuildTarget *target, const char *template_re
 		const char *manifest_path = NULL;
 		JSONObject *candidate = read_library_manifest_for_path(lib_path, &manifest_path);
 		if (!candidate) continue;
-		BuildParseContext manifest_context = { manifest_path, NULL };
+		BuildParseContext manifest_context = { .file = manifest_path };
 		const char *provides = get_optional_string(manifest_context, candidate, "provides");
 		if (provides && str_eq(provides, lib_name))
 		{
@@ -718,7 +751,7 @@ static void project_add_target(BuildParseContext context, Project *project, Buil
 	duplicate_prop(&target->linker_libs);
 	duplicate_prop(&target->link_args);
 
-	BuildParseContext target_context = { context.file, str_printf("%s %s", type, context.target) };
+	BuildParseContext target_context = { context.file, str_printf("%s %s", type, context.target), false };
 	const char *template_ref = get_optional_string(target_context, json, "template");
 	if (template_ref)
 	{
@@ -755,7 +788,7 @@ static void project_add_targets(const char *filename, Project *project, JSONObje
 	ASSERT(project_data->type == J_OBJECT);
 
 	BuildTarget default_target = default_build_target;
-	load_into_build_target((BuildParseContext) { filename, NULL }, project_data, &default_target);
+	load_into_build_target((BuildParseContext) { .file = filename }, project_data, &default_target);
 	JSONObject *targets_json = json_map_get(project_data, "targets");
 	if (!targets_json)
 	{
@@ -772,7 +805,7 @@ static void project_add_targets(const char *filename, Project *project, JSONObje
 		{
 			error_exit("Invalid data in target '%s'", key);
 		}
-		BuildParseContext context = { filename, key };
+		BuildParseContext context = { filename, key, false };
 		int type = get_valid_string_setting(context, object, "type", targets, 0, ELEMENTLEN(targets), "a target type like 'executable' or 'static-lib'");
 		if (type < 0) error_exit("Target %s did not contain 'type' key.", key);
 		project_add_target(context, project, &default_target, object, target_desc[type], type);
@@ -786,9 +819,10 @@ static void project_add_targets(const char *filename, Project *project, JSONObje
  *
  * @param project the project to look in.
  * @param optional_target the selected target, may be NULL.
+ * @param compiler_command the command used.
  * @return the target if one is provided, otherwise the default target.
  */
-BuildTarget *project_select_target(const char *filename, Project *project, const char *optional_target)
+BuildTarget *project_select_target(const char *filename, Project *project, const char *optional_target, CompilerCommand compiler_command)
 {
 	if (!vec_size(project->targets))
 	{
@@ -796,7 +830,34 @@ BuildTarget *project_select_target(const char *filename, Project *project, const
 	}
 	if (!optional_target)
 	{
-		return project->targets[0];
+		BuildTarget *best = NULL;
+		FOREACH(BuildTarget *, target, project->targets)
+		{
+			switch (target->type)
+			{
+				case TARGET_TYPE_BENCHMARK:
+					if (compiler_command == COMMAND_BENCHMARK) return target;
+					if (compiler_command == COMMAND_TEST) continue; // Not compatible
+					break;
+				case TARGET_TYPE_TEST:
+					if (compiler_command == COMMAND_TEST) return target;
+					if (compiler_command == COMMAND_BENCHMARK) continue; // Not compatible
+					break;
+				case TARGET_TYPE_DYNAMIC_LIB:
+				case TARGET_TYPE_STATIC_LIB:
+				case TARGET_TYPE_OBJECT_FILES:
+					if (compiler_command == COMMAND_RUN) continue; // Not compatible
+					return target;
+				case TARGET_TYPE_PREPARE:
+					if (compiler_command == COMMAND_BUILD || compiler_command == COMMAND_DIST) break;
+					if (compiler_command == COMMAND_RUN) break; // Can be used but isn't the default
+					continue; // Only compatible with build and dist
+				case TARGET_TYPE_EXECUTABLE:
+					return target;
+			}
+			if (!best) best = target;
+		}
+		return best ? best : project->targets[0];
 	}
 	FOREACH(BuildTarget *, target, project->targets)
 	{

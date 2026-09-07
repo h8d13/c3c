@@ -7,7 +7,7 @@ const char *manifest_default_keys[][2] = {
 		{"sources", "Paths to library sources for targets, such as interface files."},
 		{"c-sources", "Set the C sources to be compiled."},
 		{"c-include-dirs", "Set the include directories for C sources."},
-		{"cc", "Set C compiler (defaults to 'cc')."},
+		{"cc", "Set C compiler."},
 		{"cflags", "C compiler flags."},
 		{"dependencies", "List of C3 libraries to also include."},
 		{"exec", "Scripts run for all platforms."},
@@ -28,7 +28,7 @@ const char *manifest_target_keys[][2] = {
 		{"c-sources-override", "C sources to be compiled, overriding global settings."},
 		{"c-include-dirs", "C source include directories for the target."},
 		{"c-include-dirs-override", "Additional C source include directories for the target, overriding global settings."},
-		{"cc", "Set C compiler (defaults to 'cc')."},
+		{"cc", "Set C compiler."},
 		{"cflags", "Additional C compiler flags for the target."},
 		{"cflags-override", "C compiler flags for the target, overriding global settings."},
 		{"dependencies", "List of C3 libraries to also include for this target."},
@@ -76,7 +76,7 @@ static inline void parse_library_type(Library *library, LibraryTarget ***target_
 static inline void parse_library_target(Library *library, LibraryTarget *target, const char *target_name,
                                         JSONObject *json)
 {
-	BuildParseContext context = { library->dir, target_name };
+	BuildParseContext context = { library->dir, target_name, false };
 	target->link_flags = get_string_array(context, json, "link-args", false);
 
 	target->linked_libs = get_string_array(context, json, "linked-libraries", false);
@@ -87,18 +87,18 @@ static inline void parse_library_target(Library *library, LibraryTarget *target,
 	target->source_dirs = library->source_dirs;
 	target->csource_dirs = library->csource_dirs;
 	target->cinclude_dirs = library->cinclude_dirs;
-	target->win_crt = (WinCrtLinking)get_valid_string_setting(context, json, "wincrt", wincrt_linking, 0, 3, "'none', 'static' or 'dynamic'.");
+	target->win_crt = (WinCrtLinking)get_valid_string_setting(context, json, "wincrt", wincrt_linking, 0, 5, "'none', 'static', 'static-debug', 'dynamic' or 'dynamic-debug'.");
 	APPEND_STRING_LIST(&target->source_dirs, "sources");
 	APPEND_STRING_LIST(&target->csource_dirs, "c-sources");
 	APPEND_STRING_LIST(&target->cinclude_dirs, "c-include-dirs");
 }
 
-static Library *add_library(JSONObject *json, const char *dir, const char **libs, unsigned libs_len)
+static Library *add_library(JSONObject *json, const char *dir, const char **libs, int libs_len)
 {
 	check_json_keys(manifest_default_keys, manifest_default_keys_count, NULL, 0, json, "library", "--list-manifest-properties");
 	Library *library = CALLOCS(Library);
 	library->dir = dir;
-	BuildParseContext context = { dir, NULL };
+	BuildParseContext context = { dir, NULL, false };
 	const char *provides = get_mandatory_string(context, json, "provides");
 	
 	if (str_findlist(provides, libs_len, libs) == -1)
@@ -120,7 +120,7 @@ static Library *add_library(JSONObject *json, const char *dir, const char **libs
 	library->dependencies = get_optional_string_array(context, json, "dependencies");
 	library->cc = get_optional_string(context, json, "cc");
 	library->cflags = get_cflags(context, json, NULL);
-	library->win_crt = (WinCrtLinking)get_valid_string_setting(context, json, "wincrt", wincrt_linking, 0, 3, "'none', 'static' or 'dynamic'.");
+	library->win_crt = (WinCrtLinking)get_valid_string_setting(context, json, "wincrt", wincrt_linking, 0, 5, "'none', 'static', 'static-debug', 'dynamic' or 'dynamic-debug'.");
 	APPEND_STRING_LIST(&library->source_dirs, "sources");
 	APPEND_STRING_LIST(&library->csource_dirs, "c-sources");
 	APPEND_STRING_LIST(&library->cinclude_dirs, "c-include-dirs");
@@ -296,8 +296,8 @@ void resolve_libraries(BuildTarget *build_target)
 	DEBUG_LOG("Resolve libraries");
 	static const char *c3lib_suffix = ".c3l";
 	const char **c3_libs = NULL;
-	unsigned libdir_count = vec_size(build_target->libdirs);
-	unsigned libs_len = vec_size(build_target->libs);
+	int libdir_count = vec_size(build_target->libdirs);
+	int libs_len = vec_size(build_target->libs);
 	if (libdir_count)
 	{
 		FOREACH(const char *, dir, build_target->libdirs)
@@ -337,7 +337,7 @@ void resolve_libraries(BuildTarget *build_target)
 	{
 		add_library_dependency(build_target, find_library(libraries, lib_count, lib_name), libraries, lib_count);
 	}
-	for (size_t i = 0; i < lib_count; i++)
+	for (int i = 0; i < lib_count; i++)
 	{
 		Library *library = libraries[i];
 		LibraryTarget *target = library->target_used;

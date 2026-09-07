@@ -687,12 +687,13 @@ static inline Ast* parse_if_stmt(ParseContext *c)
  * 	| CAST type ':' case_stmts
  * 	;
  */
-static inline Ast *parse_case_stmt(ParseContext *c, TokenType case_type, TokenType default_type)
+static inline Ast *parse_case_stmt(ParseContext *c, TokenType case_type, TokenType default_type, int index)
 {
 	Ast *ast = NEW_AST_TOKEN(AST_CASE_STMT);
 	advance(c);
 	ASSIGN_EXPR_OR_RET(Expr *expr, parse_expr(c), poisoned_ast);
 	ast->case_stmt.expr = exprid(expr);
+	ast->case_stmt.index = index;
 	// Change type -> type.typeid
 	if (expr->expr_kind == EXPR_TYPEINFO)
 	{
@@ -729,9 +730,10 @@ static inline Ast *parse_case_stmt(ParseContext *c, TokenType case_type, TokenTy
  * default_stmt
  *  : DEFAULT ':' case_stmts
  */
-static inline Ast *parse_default_stmt(ParseContext *c, TokenType case_type, TokenType default_type)
+static inline Ast *parse_default_stmt(ParseContext *c, TokenType case_type, TokenType default_type, int index)
 {
 	Ast *ast = NEW_AST_TOKEN(AST_DEFAULT_STMT);
+	ast->case_stmt.index = index;
 	advance(c);
 	TRY_CONSUME_OR_RET(TOKEN_COLON, "Expected ':' after 'default'.", poisoned_ast);
 	uint32_t row = c->span.row;
@@ -752,17 +754,18 @@ static inline Ast *parse_default_stmt(ParseContext *c, TokenType case_type, Toke
 bool parse_switch_body(ParseContext *c, Ast ***cases, TokenType case_type, TokenType default_type)
 {
 	CONSUME_OR_RET(TOKEN_LBRACE, false);
+	int index = 0;
 	while (!try_consume(c, TOKEN_RBRACE))
 	{
 		Ast *result;
 		TokenType tok = c->tok;
 		if (tok == case_type)
 		{
-			ASSIGN_AST_OR_RET(result, parse_case_stmt(c, case_type, default_type), false);
+			ASSIGN_AST_OR_RET(result, parse_case_stmt(c, case_type, default_type, index), false);
 		}
 		else if (tok == default_type)
 		{
-			ASSIGN_AST_OR_RET(result, parse_default_stmt(c, case_type, default_type), false);
+			ASSIGN_AST_OR_RET(result, parse_default_stmt(c, case_type, default_type, index), false);
 		}
 		else
 		{
@@ -770,6 +773,7 @@ bool parse_switch_body(ParseContext *c, Ast ***cases, TokenType case_type, Token
 			return false;
 		}
 		vec_add((*cases), result);
+		index++;
 	}
 	return true;
 }
@@ -872,23 +876,23 @@ static inline bool parse_foreach_var(ParseContext *c, Ast *foreach)
 	TypeInfo *type = NULL;
 
 	// If we don't get foreach (foo ... or foreach (*foo ... then a type is expected.
-	if (!tok_is(c, TOKEN_IDENT) && !tok_is(c, TOKEN_AMP))
+	bool is_by_ref = try_consume(c, TOKEN_AMP);
+	ASSIGN_EXPR_OR_RET(Expr *expr, parse_type_or_identifier(c), false);
+	Decl *var;
+	if (expr->expr_kind == EXPR_TYPEINFO)
 	{
-		ASSIGN_TYPE_OR_RET(type, parse_optional_type(c), false);
-
-		// Add the optional to the type for nicer error reporting.
-		RANGE_EXTEND_PREV(type);
+		if (is_by_ref) RETURN_PRINT_ERROR_AT(false, expr, "Expected an identifier after '&'.");
+		type = expr->type_expr;
+		is_by_ref = try_consume(c, TOKEN_AMP);
+		var = decl_new_var_loc(symstr(c), &c->span, type, VARDECL_LOCAL);
+		if (!try_consume(c, TOKEN_IDENT)) RETURN_PRINT_ERROR_HERE("Expected an identifier after the type.");
 	}
-	if (try_consume(c, TOKEN_AMP))
+	else
 	{
-		foreach->foreach_stmt.value_by_ref = true;
+		if (!expr_is_plain_identifier(expr)) RETURN_PRINT_ERROR_AT(false, expr, "Expected a plain identifier after '&'.");
+		var = decl_new_var(expr->unresolved_ident_expr.ident, expr->loc, NULL, VARDECL_LOCAL);
 	}
-	Decl *var = decl_new_var_loc(symstr(c), &c->span, type, VARDECL_LOCAL);
-	if (!try_consume(c, TOKEN_IDENT))
-	{
-		if (type) RETURN_PRINT_ERROR_HERE("Expected an identifier after the type.");
-		RETURN_PRINT_ERROR_HERE("Expected an identifier or type.");
-	}
+	if (is_by_ref) foreach->foreach_stmt.value_by_ref = true;
 	foreach->foreach_stmt.variable = declid(var);
 	return true;
 }
@@ -900,7 +904,7 @@ static inline Ast* parse_foreach_stmt(ParseContext *c)
 {
 	Ast *ast = NEW_AST_TOKEN(AST_FOREACH_STMT);
 
-	if (!((ast->foreach_stmt.is_reverse = try_consume(c, TOKEN_FOREACH_R))))
+	if (!((ast->foreach_stmt.is_reverse = try_consume(c, TOKEN_FOREACH_R)))) // NOLINE
 	{
 		advance_and_verify(c, TOKEN_FOREACH);
 	}
@@ -1235,11 +1239,11 @@ static inline Ast* parse_ct_switch_stmt(ParseContext *c)
 		TokenType tok = c->tok;
 		if (tok == TOKEN_CT_CASE)
 		{
-			ASSIGN_AST_OR_RET(result, parse_case_stmt(c, TOKEN_CT_CASE, TOKEN_CT_DEFAULT), poisoned_ast);
+			ASSIGN_AST_OR_RET(result, parse_case_stmt(c, TOKEN_CT_CASE, TOKEN_CT_DEFAULT, 0), poisoned_ast);
 		}
 		else if (tok == TOKEN_CT_DEFAULT)
 		{
-			ASSIGN_AST_OR_RET(result, parse_default_stmt(c, TOKEN_CT_CASE, TOKEN_CT_DEFAULT), poisoned_ast);
+			ASSIGN_AST_OR_RET(result, parse_default_stmt(c, TOKEN_CT_CASE, TOKEN_CT_DEFAULT, 0), poisoned_ast);
 		}
 		else
 		{
@@ -1455,12 +1459,15 @@ Ast *parse_stmt(ParseContext *c)
 		case TOKEN_AND:
 		case TOKEN_ARROW:
 		case TOKEN_ATTRDEF:
+		case TOKEN_ATTRMACRO:
 		case TOKEN_BANGBANG:
 		case TOKEN_BITSTRUCT:
 		case TOKEN_BIT_AND_ASSIGN:
 		case TOKEN_BIT_OR_ASSIGN:
 		case TOKEN_BIT_XOR_ASSIGN:
 		case TOKEN_CONSTDEF:
+		case TOKEN_CONSTSET:
+		case TOKEN_CENUM:
 		case TOKEN_COLON:
 		case TOKEN_COMMA:
 		case TOKEN_CT_CASE:
@@ -1488,6 +1495,7 @@ Ast *parse_stmt(ParseContext *c)
 		case TOKEN_EQEQ:
 		case TOKEN_EXTERN:
 		case TOKEN_FAULTDEF:
+		case TOKEN_FAULTSET:
 		case TOKEN_FN:
 		case TOKEN_GREATER:
 		case TOKEN_GREATER_EQ:
@@ -1518,6 +1526,7 @@ Ast *parse_stmt(ParseContext *c)
 		case TOKEN_SHR_ASSIGN:
 		case TOKEN_STRUCT:
 		case TOKEN_TYPEDEF:
+		case TOKEN_DISTINCT:
 		case TOKEN_UNDERSCORE:
 		case TOKEN_UNION:
 			PRINT_ERROR_HERE("Unexpected '%s' found when expecting a statement.",

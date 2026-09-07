@@ -516,7 +516,7 @@ void file_get_dir_and_filename_from_full(const char *full_path, char **filename,
 	}
 }
 
-const char *file_find_top_dir()
+const char *file_find_top_dir(void)
 {
 	while (1)
 	{
@@ -579,16 +579,6 @@ bool file_exists(const char *path)
 	struct stat st;
 	if (stat(path, &st)) return false;
 	return S_ISDIR(st.st_mode) || S_ISREG(st.st_mode) || S_ISREG(st.st_mode);
-}
-
-bool file_is_same(const char *a, const char *b)
-{
-	struct stat sa, sb;
-	if (stat(a, &sa) || stat(b, &sb)) return false;
-	// Only meaningful for regular files with a real inode (st_ino can be 0 on some filesystems).
-	if (!S_ISREG(sa.st_mode) || !S_ISREG(sb.st_mode)) return false;
-	if (sa.st_ino == 0) return false;
-	return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
 }
 
 bool file_executable_in_path(const char *name)

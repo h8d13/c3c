@@ -82,7 +82,7 @@ void sema_analysis_pass_process_imports(Module *module)
 
 	DEBUG_LOG("Pass: Importing dependencies for files in module '%s'.", module->name->module);
 
-	unsigned total_import_count = 0;
+	int total_import_count = 0;
 	FOREACH(CompilationUnit *, unit, module->units)
 	{
 		// 1. Loop through each context in the module.
@@ -90,9 +90,9 @@ void sema_analysis_pass_process_imports(Module *module)
 
 		// 2. Loop through imports
 		Decl **imports = unit->imports;
-		unsigned import_count = vec_size(imports);
+		int import_count = vec_size(imports);
 
-		for (unsigned i = 0; i < import_count; i++)
+		for (int i = 0; i < import_count; i++)
 		{
 			// 3. Begin analysis
 			Decl *import = imports[i];
@@ -101,7 +101,7 @@ void sema_analysis_pass_process_imports(Module *module)
 			// 4. Find the module.
 			Path *path = import->import.path;
 
-			for (unsigned j = 0; j < i; j++)
+			for (int j = 0; j < i; j++)
 			{
 				if (imports[j]->import.path->module == path->module)
 				{
@@ -162,7 +162,7 @@ NEXT:;
 FOUND_ALIAS:
 			alias_module->module_alias_decl.module = import_module;
 			alias_module->resolve_status = RESOLVE_DONE;
-			for (unsigned i = 0; i < idx; i++)
+			for (int i = 0; i < idx; i++)
 			{
 				if (unit->module_aliases[i]->name == alias_module->name)
 				{
@@ -532,7 +532,7 @@ void sema_analysis_pass_process_methods(Module *module)
 	{
 		SemaContext context;
 		sema_context_init(&context, unit);
-		unsigned size_before = vec_size(unit->methods_to_register);
+		int size_before = vec_size(unit->methods_to_register);
 		FOREACH(Decl *, method, unit->methods_to_register)
 		{
 			TypeInfo *parent_type_info = decl_find_method_target(method);
@@ -562,7 +562,6 @@ void sema_analysis_pass_process_methods(Module *module)
 }
 
 /*
- *
  * A specialization is a generic method like:
  * fn int Foo{int}.bar(&self) { ... }
  * That is, the method parent is a generic instantiation.
@@ -595,6 +594,35 @@ void sema_analysis_pass_process_method_specialization(void)
 	}
 	if (unit) sema_context_destroy(&context);
 	vec_resize(compiler.context.unregistered_method_specializations, 0);
+	DEBUG_LOG("Pass finished with %d error(s).", compiler.context.errors_found);
+}
+
+/*
+ * Late generic declarations are processed here
+ */
+void sema_analysis_pass_process_late_generics(void)
+{
+	DEBUG_LOG("Pass: Process late generics");
+	SemaContext context;
+	CompilationUnit *unit = NULL;
+	Decl **late_generics;
+	while ((late_generics = compiler.context.unregistered_generic_decls) != NULL)
+	{
+		compiler.context.unregistered_generic_decls = NULL;
+		FOREACH(Decl *, generic, late_generics)
+		{
+			if (generic->resolve_status == RESOLVE_DONE) continue;
+			CompilationUnit *generic_unit = generic->unit;
+			if (generic_unit != unit)
+			{
+				if (unit) sema_context_destroy(&context);
+				unit = generic_unit;
+				sema_context_init(&context, unit);
+			}
+			sema_analyse_decl(&context, generic);
+		}
+	}
+	if (unit) sema_context_destroy(&context);
 	DEBUG_LOG("Pass finished with %d error(s).", compiler.context.errors_found);
 }
 
@@ -646,13 +674,13 @@ CHECK_LINK:
 		FOREACH(Attr*,  attr, unit->attr_links)
 		{
 			Expr **exprs = attr->exprs;
-			unsigned args = vec_size(exprs);
+			int args = vec_size(exprs);
 			ASSERT(args > 0 && "Should already have been checked.");
 			Expr *cond = args > 1 ? attr->exprs[0] : NULL;
 			if (cond && !sema_analyse_expr_rvalue(&context, cond)) goto FAIL_CONTEXT;
 			bool start = cond && expr_is_const_bool(cond) ? 1 : 0;
 			bool add = start == 0 ? true : cond->const_expr.b;
-			for (unsigned i = start; i < args; i++)
+			for (int i = start; i < args; i++)
 			{
 				Expr *string = attr->exprs[i];
 				if (!sema_analyse_expr_rvalue(&context, string)) goto FAIL_CONTEXT;
@@ -770,10 +798,10 @@ bool analyse_func_body(SemaContext *context, Decl *decl)
 		return decl_poison(decl);
 	}
 	// Don't analyse functions that are tests.
-	if (decl->func_decl.attr_test && !compiler.build.testing) return true;
+	if (decl->func_decl.attr_test && !compiler.build.build_test) return true;
 
 	// Don't analyse functions that are benchmarks.
-	if (decl->func_decl.attr_benchmark && !compiler.build.benchmarking) return true;
+	if (decl->func_decl.attr_benchmark && !compiler.build.build_benchmark) return true;
 
 	if (!sema_analyse_function_body(context, decl, 0)) return decl_poison(decl);
 	return true;
@@ -824,8 +852,8 @@ INLINE void sema_analyse_weak_decls(SemaContext *context, Decl **decls)
 
 INLINE void sema_analyse_decls(SemaContext *context, Decl **decls)
 {
-	unsigned count = vec_size(decls);
-	for (unsigned i = 0; i < count; i++)
+	int count = vec_size(decls);
+	for (int i = 0; i < count; i++)
 	{
 		Decl *decl = decls[i];
 		if (decl->replacement)

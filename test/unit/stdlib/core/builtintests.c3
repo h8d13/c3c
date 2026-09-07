@@ -29,7 +29,7 @@ fn void test_enum_by_name()
 }
 
 
-faultdef SOME_FAULT, ABC_FAULT;
+excuse SOME_FAULT, ABC_FAULT;
 
 fn void test_try_catch()
 {
@@ -367,10 +367,10 @@ fn void test_fault_short_name_rt() @test
 
 	bool? maybe = foo_fault(5);
 
-	if (catch excuse = maybe)
+	if (catch e = maybe)
 	{
-		test::eq(excuse.description, "builtins::SOME_FAULT");
-		test::eq(excuse.short_name(), "SOME_FAULT");
+		test::eq(e.description, "builtins::SOME_FAULT");
+		test::eq(e.short_name(), "SOME_FAULT");
 	}
 }
 
@@ -383,3 +383,13 @@ fn void test_fault_short_name_comp() @test
 }
 
 
+fn void test_builtin_mod() @test
+{
+	uint a = 10;
+	uint b = 3;
+	assert($$mod(a, b) == 1);
+
+	int c = -10;
+	int d = 3;
+	assert($$mod(c, d) == -1);
+}

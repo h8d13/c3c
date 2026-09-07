@@ -56,6 +56,7 @@ const char *kw_bitsize;
 const char *kw_cname;
 const char *kw_description;
 const char *kw_drop;
+const char *kw_excuse;
 const char *kw_generic_args;
 const char *kw_generic_qname;
 const char *kw_get;
@@ -80,8 +81,10 @@ const char *kw_name;
 const char *kw_qname;
 const char *kw_offset;
 const char *kw_ordinal;
+const char *kw_default_value;
 const char *kw_out;
 const char *kw_own;
+const char *kw_param_struct;
 const char *kw_ptr;
 const char *kw_return;
 const char *kw_self;
@@ -101,7 +104,7 @@ const char *kw_wmain;
 const char *kw_FILE_NOT_FOUND;
 const char *kw_IoError;
 
-void symtab_destroy()
+void symtab_destroy(void)
 {
 	free(symtab.bucket);
 }
@@ -165,8 +168,10 @@ void symtab_init(uint32_t capacity)
 	kw_bitoffset = KW_DEF("bitoffset");
 	kw_bitsize = KW_DEF("bitsize");
 	kw_cname = KW_DEF("cname");
+	kw_default_value = KW_DEF("default_value");
 	kw_description = KW_DEF("description");
 	kw_drop = KW_DEF("drop");
+	kw_excuse = KW_DEF("excuse");
 	kw_generic_args = KW_DEF("generic_args");
 	kw_generic_qname = KW_DEF("generic_qname");
 	kw_get = KW_DEF("get");
@@ -191,6 +196,7 @@ void symtab_init(uint32_t capacity)
 	kw_ordinal = KW_DEF("ordinal");
 	kw_out = KW_DEF("out");
 	kw_own = KW_DEF("own");
+	kw_param_struct = KW_DEF("param_struct");
 	kw_ptr = KW_DEF("ptr");
 	kw_qname = KW_DEF("qname");
 	kw_self = KW_DEF("self");
@@ -230,6 +236,7 @@ void symtab_init(uint32_t capacity)
 	type_property_list[TYPE_PROPERTY_NAME] = kw_name;
 	type_property_list[TYPE_PROPERTY_NAMES] = KW_DEF("names");
 	type_property_list[TYPE_PROPERTY_NAN] = KW_DEF("nan");
+	type_property_list[TYPE_PROPERTY_PARAM_STRUCT] = kw_param_struct;
 	type_property_list[TYPE_PROPERTY_PARAMS] = KW_DEF("params");
 	type_property_list[TYPE_PROPERTY_PARENT] = KW_DEF("parent");
 	type_property_list[TYPE_PROPERTY_QNAME] = kw_qname;
@@ -367,17 +374,17 @@ void symtab_init(uint32_t capacity)
 	builtin_list[BUILTIN_WIDESTRING_16] = KW_DEF("wstr16");
 	builtin_list[BUILTIN_WIDESTRING_32] = KW_DEF("wstr32");
 
-	for (unsigned i = 0; i < NUMBER_OF_BUILTINS; i++)
+	for (int i = 0; i < NUMBER_OF_BUILTINS; i++)
 	{
 		ASSERT(builtin_list[i] && "Missing builtin");
 	}
 
-	for (unsigned i = 0; i < NUMBER_OF_TYPE_PROPERTIES; i++)
+	for (int i = 0; i < NUMBER_OF_TYPE_PROPERTIES; i++)
 	{
 		ASSERT(type_property_list[i] && "Missing type property");
 	}
 
-	for (unsigned i = 0; i < NUMBER_OF_BUILTIN_DEFINES; i++)
+	for (int i = 0; i < NUMBER_OF_BUILTIN_DEFINES; i++)
 	{
 		ASSERT(builtin_defines[i] && "Missing builtin define");
 	}
@@ -400,6 +407,10 @@ void symtab_init(uint32_t capacity)
 	attribute_list[ATTRIBUTE_BIGENDIAN] = KW_DEF("@bigendian");
 	attribute_list[ATTRIBUTE_BUILTIN] = KW_DEF("@builtin");
 	attribute_list[ATTRIBUTE_CALLCONV] = KW_DEF("@callconv");
+	attribute_list[ATTRIBUTE_STACKPROBE] = KW_DEF("@stackprobe");
+	attribute_list[ATTRIBUTE_NOSTACKPROBE] = KW_DEF("@nostackprobe");
+	attribute_list[ATTRIBUTE_STACKPROTECTOR] = KW_DEF("@stackprotector");
+	attribute_list[ATTRIBUTE_NOSTACKPROTECTOR] = KW_DEF("@nostackprotector");
 	attribute_list[ATTRIBUTE_CNAME] = KW_DEF("@cname");
 	attribute_list[ATTRIBUTE_COMPACT] = KW_DEF("@compact");
 	attribute_list[ATTRIBUTE_CONST] = KW_DEF("@const");
@@ -427,6 +438,7 @@ void symtab_init(uint32_t capacity)
 	attribute_list[ATTRIBUTE_NOPADDING] = KW_DEF("@nopadding");
 	attribute_list[ATTRIBUTE_NORECURSE] = KW_DEF("@norecurse");
 	attribute_list[ATTRIBUTE_NORETURN] = KW_DEF("@noreturn");
+	attribute_list[ATTRIBUTE_NOREDZONE] = KW_DEF("@noredzone");
 	attribute_list[ATTRIBUTE_NOSANITIZE] = KW_DEF("@nosanitize");
 	attribute_list[ATTRIBUTE_NOSTRIP] = KW_DEF("@nostrip");
 	attribute_list[ATTRIBUTE_OBFUSCATE] = KW_DEF("@obfuscate");
@@ -453,7 +465,7 @@ void symtab_init(uint32_t capacity)
 	attribute_list[ATTRIBUTE_WEAKLINK] = KW_DEF("@weaklink");
 	attribute_list[ATTRIBUTE_WINMAIN] = KW_DEF("@winmain");
 
-	for (unsigned i = 0; i < NUMBER_OF_ATTRIBUTES; i++)
+	for (int i = 0; i < NUMBER_OF_ATTRIBUTES; i++)
 	{
 		ASSERT(attribute_list[i] && "Missing attributes");
 	}
