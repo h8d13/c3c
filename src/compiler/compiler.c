@@ -2,6 +2,7 @@
 // Use of this source code is governed by the GNU LGPLv3.0 license
 // a copy of which can be found in the LICENSE file.
 
+#include <sys/stat.h>
 #include "compiler_internal.h"
 #include "../build/project.h"
 #include "../utils/json.h"
@@ -13,7 +14,6 @@
 #endif
 #include "git_hash.h"
 #include <errno.h>
-#include <sys/stat.h>
 
 #define MAX_OUTPUT_FILES 1000000
 #define MAX_MODULES 100000
